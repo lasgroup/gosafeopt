@@ -1,7 +1,7 @@
 # Safe Controller Tuning for Quadrupedal Locomotion
 Actively learning the disturbance parameters of a dynamical systems.
 
-Relevant code for the paper is in `bayopt/aquisitions/*`, `bayopt/models/__init__.py`, `bayopt/optim/swarm_opt.py` and `bayopt/optim/base_optimizer.py`.
+Relevant code for the paper is in `gosafeopt/aquisitions/*`, `gosafeopt/models/__init__.py`, `gosafeopt/optim/swarm_opt.py` and `gosafeopt/optim/base_optimizer.py`.
 
 ## Setup
 ```
