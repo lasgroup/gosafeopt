@@ -1,5 +1,4 @@
-# Safe Controller Tuning for Quadrupedal Locomotion
-Actively learning the disturbance parameters of a dynamical systems.
+# Tuning Legged Locomotion Controllers via Safe Bayesian Optimization
 
 This repository contains the code for our paper [Tuning Legged Locomotion Controllers via Safe Bayesian Optimization](https://arxiv.org/abs/2306.07092). A demo video is available at [https://www.youtube.com/watch?v=pceHWpFr3ng](https://www.youtube.com/watch?v=pceHWpFr3ng).
 
