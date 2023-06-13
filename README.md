@@ -1,9 +1,9 @@
 # Safe Controller Tuning for Quadrupedal Locomotion
 Actively learning the disturbance parameters of a dynamical systems.
 
-Code for our paper Tuning Legged Locomotion Controllers via Safe Bayesian Optimization.
+This repository contains the code for our paper [Tuning Legged Locomotion Controllers via Safe Bayesian Optimization](https://arxiv.org/abs/2306.07092). A demo video is available at [https://www.youtube.com/watch?v=pceHWpFr3ng](https://www.youtube.com/watch?v=pceHWpFr3ng).
 
-Relevant code for the paper is in `gosafeopt/aquisitions/*`, `gosafeopt/models/__init__.py`, `gosafeopt/optim/swarm_opt.py` and `gosafeopt/optim/base_optimizer.py`.
+All relevant code for the paper is in `gosafeopt/aquisitions/*`, `gosafeopt/models/__init__.py`, `gosafeopt/optim/swarm_opt.py` and `gosafeopt/optim/base_optimizer.py`.
 
 ## Setup
 ```
