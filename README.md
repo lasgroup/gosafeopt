@@ -1,5 +1,5 @@
 # Tuning Legged Locomotion Controllers via Safe Bayesian Optimization
-(![Bayesian Optimization animation](/doc/animation.gif?raw=true "Bayesian optimization animation"))
+![Bayesian Optimization animation](/doc/animation.gif?raw=true "Bayesian optimization animation")
 
 This repository contains the code for our paper [Tuning Legged Locomotion Controllers via Safe Bayesian Optimization](https://arxiv.org/abs/2306.07092). A demo video is available at [https://www.youtube.com/watch?v=pceHWpFr3ng](https://www.youtube.com/watch?v=pceHWpFr3ng).
 
