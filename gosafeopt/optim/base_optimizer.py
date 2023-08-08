@@ -105,7 +105,7 @@ class BaseOptimizer:
             state = OptimizerState(self.c)
             N = self.c["set_size"]
 
-            safeSet = torch.vstack(state.safeSet) if goSafeOptS1Override and state.getSafeSet() is not None else state.getSafeSet()
+            safeSet = torch.vstack(state.safeSet.to(gosafeopt.device)) if goSafeOptS1Override and state.getSafeSet() is not None else state.getSafeSet()
 
             #TODO this doesn't work for different contexts
             if safeSet is None or len(safeSet) == 0:
