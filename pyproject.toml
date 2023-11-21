@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 requires-python = ">=3.10.0,<3.12.0" #Because of pytorch
 
 [tool.setuptools.packages.find]
-include = ["mynamespace.subpackage_a"]
+include = ["gosafeopt"]
 
 [project]
 name="gosafeopt"
 version="0.1.0"
 description="Safe Bayesian Optimisation"
 dependencies=[
-    "torch==2.1.1",
+    "torch==2.0.1",
     "typer==0.9.0",
     "numpy==1.25.2",
     "seaborn==0.12.2",
