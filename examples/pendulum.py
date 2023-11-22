@@ -14,7 +14,7 @@ from gosafeopt.models import create_model
 from gosafeopt.optim import get_optimizer
 from gosafeopt.optim.base_optimizer import OptimizerState
 from gosafeopt.optim.swarm_opt import SwarmOpt
-from examples.pendulum.wandblogger import PendulumWandbLogger
+from pendulum.wandblogger import PendulumWandbLogger
 from pendulum.environments import PendulumGymEnvWithDynamics
 from gosafeopt.tools.data import Data
 from gosafeopt.tools.logger import Logger
@@ -37,8 +37,8 @@ app = typer.Typer()
 
 
 def getConfigs(
-    config_path="examples/config.json",
-    config_path_pendulum="examples/config_pendulum.json",
+    config_path="config.json",
+    config_path_pendulum="config_pendulum.json",
 ):
     with open(config_path) as f:
         config = json.load(f)["optimization"]
