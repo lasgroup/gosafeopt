@@ -12,7 +12,6 @@ All relevant code for the paper is in `gosafeopt/aquisitions/*`, `gosafeopt/mode
 python -m venv .venv
 . .venv/bin/activate
 pip install -e .
-wandb login
 ```
 
 It might be necessary to create a wandb account at wandb.ai if not already existing.
@@ -22,9 +21,9 @@ It might be necessary to create a wandb account at wandb.ai if not already exist
 To train the pendulum toy problem model with a specific aquisition function and show the result plot run
 
 ```
- python examples/pendulum.py train --aquisition GoSafeOpt --seed 42
-
- python examples/pendulum.py plot --data-path wandb/wandb/{RUN_NAME}/files/res
+cd examples
+python pendulum.py train --aquisition GoSafeOpt --seed 42
+python pendulum.py plot --data-path wandb/wandb/{RUN_NAME}/files/res
 ```
 
 The aquisition function can be one of `GoSafeOpt, SafeOptMultiStage, SafeUCB, SafeEI, UCB`.
