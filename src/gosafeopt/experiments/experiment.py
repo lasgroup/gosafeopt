@@ -63,7 +63,7 @@ class Experiment:
             OptimizerState(self.c).addSafeSet(param.reshape(1, -1))
             OptimizerState(self.c).changeToLastSafeSet()
 
-        rewards = rewards / rewards.shape[0]
+        rewards = rewards / len(trajectory)
         return torch.from_numpy(rewards), torch.tensor(trajectory), backup_triggered, info
 
     def reset(self):
@@ -77,7 +77,7 @@ class Experiment:
 
     def process_backup_strategy(self, observation, reward, i):
         if self.backup is not None:
-            if not self.backup.is_safe(observation, reward):
+            if not self.backup.is_safe(observation):
                 param = self.backup.get_backup_policy(observation)
                 self.env.backup(param)
                 self.backup.add_fail(param, observation)

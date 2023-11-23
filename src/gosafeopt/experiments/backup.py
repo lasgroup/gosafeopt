@@ -16,9 +16,10 @@ class Backup:
         self.idealTrajectory = None
         self.lastBackupFromInterior = False
 
-    def is_safe(self, state, reward):
-        # TODO: maybe use backup at s1 aswell
-        if self.data.backup is None or (not np.any(reward[1:] < 0) and self.goState.skipBackupAtRollout()):
+    def is_safe(self, state):
+        # TODO: maybe use backup at s1 aswell with reward...
+        # if self.data.backup is None or (not np.any(reward[1:] < 0) and self.goState.skipBackupAtRollout()):
+        if self.data.backup is None or self.goState.skipBackupAtRollout():
             return True
 
         diff = torch.linalg.norm(self.data.backup - state, axis=1)
