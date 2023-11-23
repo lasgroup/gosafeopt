@@ -1,12 +1,11 @@
 from gosafeopt.aquisitions.go_safe_opt import GoSafeOptState
 import torch
 from scipy.stats import norm
-
+import numpy as np
 from gosafeopt.tools.logger import Logger
 
 
 class Backup:
-
     def __init__(self, config, data, state_dict=None):
         self.data = data
         self.config = config
@@ -17,13 +16,10 @@ class Backup:
         self.idealTrajectory = None
         self.lastBackupFromInterior = False
 
-    def isSafe(self, state):
-        if self.goState.skipBackupAtRollout():
+    def is_safe(self, state, reward):
+        # TODO: maybe use backup at s1 aswell
+        if self.data.backup is None or (not np.any(reward[1:] < 0) and self.goState.skipBackupAtRollout()):
             return True
-
-        backup = self.data.backup
-        if self.idealTrajectory is not None:
-            backup = torch.vstack([backup, self.idealTrajectory])
 
         diff = torch.linalg.norm(self.data.backup - state, axis=1)
         # diff /= diff.std()
@@ -37,26 +33,19 @@ class Backup:
 
         distribution = torch.distributions.Normal(0, self.config["safe_opt_sigma"])
 
-        probsInterior = 1-2*(distribution.cdf(diffInt)-0.5)
-        probsMarginal = 1-2*(distribution.cdf(diffMarginal)-0.5)
+        probsInterior = 1 - 2 * (distribution.cdf(diffInt) - 0.5)
+        probsMarginal = 1 - 2 * (distribution.cdf(diffMarginal) - 0.5)
 
-        # try:
-        #     print(f"Marginal: {probsMarginal.max()}")
-        #     print(f"Interior: {probsInterior.max()}")
-        # except Exception:
-        #     pass
         if torch.any(probsInterior > self.config["safe_opt_interior_prob"]):
-            # print(f"Interior: {probsInterior.max()}")
             self.lastBackupFromInterior = True
             return True
         elif torch.any(probsMarginal > self.config["safe_opt_marginal_prob"]):
-            # print(f"Marginal: {probsMarginal.max()}")
-            self.lastBackupFromInterior = False 
+            self.lastBackupFromInterior = False
             return True
         else:
             return False
 
-    def getBackupPolicy(self, state):
+    def get_backup_policy(self, state):
         diff = torch.linalg.norm(self.data.backup - state, axis=1)
 
         interior_points = torch.min(self.data.backup_loss[:, 1:], axis=1)[0] > self.config["safe_opt_interior_lb"]
@@ -75,7 +64,7 @@ class Backup:
         if self.data.failed_k is not None and self.goState.skipBackupAtRollout():
             mask = torch.ones(len(self.data.failed_x_rollout), dtype=bool)
             for i in range(len(self.data.failed_x_rollout)):
-                mask[i] = self.isSafe(self.data.failed_x_rollout[i])
+                mask[i] = self.is_safe(self.data.failed_x_rollout[i])
 
             s = len(self.data.failed_k)
             self.data.failed_k = self.data.failed_k[mask]
@@ -83,8 +72,5 @@ class Backup:
             if s > len(self.data.failed_k):
                 Logger.info(f"Removed {s-len(self.data.failed_k)}")
 
-    def setIdealTrajectory(self, idealTrajectory):
-        self.idealTrajectory = idealTrajectory
-
-    def adddFail(self, k, state):
-        self.data.append_failed(k, state)
+    def add_fail(self, param, observation):
+        self.data.append_failed(param, torch.tensor(observation))

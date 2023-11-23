@@ -10,9 +10,7 @@ import gosafeopt
 
 
 def create_model(config, data, state_dict=None):
-
-    bounds = torch.vstack([torch.tensor(config["domain_start"]),
-                          torch.tensor(config["domain_end"])])
+    bounds = torch.vstack([torch.tensor(config["domain_start"]), torch.tensor(config["domain_end"])])
 
     input_transform = Normalize(config["dim"], bounds=bounds) if config["normalize_input"] else None
 
@@ -40,8 +38,17 @@ def create_model(config, data, state_dict=None):
         covar_module = ScaleKernel(gpytorch.kernels.MaternKernel(ard_num_dims=config["dim"]))
         covar_module.base_kernel.lengthscale = torch.tensor(config["init_lenghtscale"])
 
-        models.append(SingleTaskGP(data.train_x, data.train_y[:, i].reshape(-1, 1), likelihood,
-                      covar_module, mean_module, outcome_transform, input_transform).to(gosafeopt.device))
+        models.append(
+            SingleTaskGP(
+                data.train_x,
+                data.train_y[:, i].reshape(-1, 1),
+                likelihood,
+                covar_module,
+                mean_module,
+                outcome_transform,
+                input_transform,
+            ).to(gosafeopt.device)
+        )
 
     model = ModelListGP(*models)
 
