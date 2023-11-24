@@ -13,13 +13,13 @@ class Backup:
         self.config = config
         self.state_dict = state_dict
         self.reset()
-        self.goState = GoSafeOptState(config)
+        self.go_state = GoSafeOptState(config)
 
         self.idealTrajectory = None
         self.lastBackupFromInterior = False
 
-    def is_safe(self, state):
-        if self.data.backup is None or self.goState.get_step() == OptimizationStep.LOCAL:
+    def is_safe(self, state) -> bool:
+        if self.data.backup is None or self.go_state.get_step() == OptimizationStep.LOCAL:
             return True
 
         diff = torch.linalg.norm(self.data.backup - state, axis=1)
@@ -62,7 +62,7 @@ class Backup:
         return self.data.backup_k[torch.argmin(diff)]
 
     def reset(self):
-        if self.data.failed_k is not None and self.goState.get_step() == OptimizationStep.LOCAL:
+        if self.data.failed_k is not None and self.go_state.get_step() == OptimizationStep.LOCAL:
             mask = torch.ones(len(self.data.failed_x_rollout), dtype=bool)
             for i in range(len(self.data.failed_x_rollout)):
                 mask[i] = self.is_safe(self.data.failed_x_rollout[i])

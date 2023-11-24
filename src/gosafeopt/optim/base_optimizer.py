@@ -125,22 +125,21 @@ class BaseOptimizer:
         elif mode == "safe" or "safe_all":
             N = self.config["set_size"]
 
-            state = SafeSet(self.config).get_current_safe_set()
-
-            safe_set = SafeSet(self.config).get_current_safe_set()
+            state = SafeSet(self.config)
+            safe_set = state.get_current_safe_set()
             #
             # Use initial safe point as seed
             if safe_set is None or len(safe_set) == 0:
                 safe_set = self.aquisition.data.train_x[-1:].to(gosafeopt.device)
             else:
                 # TODO: why is this needed? Should already be on correct device.
-                for i in range(len(safe_set.safe_sets)):
+                for i in range(len(state.safe_sets)):
                     state.safe_sets[i] = state.safe_sets[i].to(gosafeopt.device)
-                safe_set = torch.vstack(safe_set.safe_sets) if mode == "safe_all" else safe_set.get_current_safe_set()
+                safe_set = torch.vstack(safe_set.safe_sets) if mode == "safe_all" else state.get_current_safe_set()
 
             # Sample at most N points from Safeset
             if safe_set.shape[0] >= N:
-                safeset = safe_set[torch.randint(0, safe_set.shape[0], (N,))]
+                X = safe_set[torch.randint(0, safe_set.shape[0], (N,))]
             # If |safesest| < N sample randomly around safeset
             else:
                 distribution = MultivariateNormal(
@@ -179,8 +178,6 @@ class BaseOptimizer:
 
     def next_params(self):
         [X, reward] = self.optimize_steps()
-
-        self.aquisition.reset()
 
         next_param = X[torch.argmax(reward)]
         reward = reward.max()

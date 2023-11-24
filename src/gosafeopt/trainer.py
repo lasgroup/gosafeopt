@@ -51,6 +51,8 @@ class Trainer:
             else:
                 gp = model(self.config, self.data, self.state_dict)
                 aquisition = get_aquisition(gp, self.config, self.context, self.data)
+
+                aquisition.before_optimization()
                 optimizer = get_optimizer(aquisition, self.config, self.context)
 
                 if (self.config["refit_interval"] != 0 and i % self.config["refit_interval"] == 0) and (
@@ -68,6 +70,7 @@ class Trainer:
 
                 reward, trajectory, backup_triggered, info = experiment.rollout(k, i)
 
+                aquisition.after_optimization()
                 if not backup_triggered:
                     self.data.append_data(k.reshape(1, -1), reward.reshape(1, -1))
 

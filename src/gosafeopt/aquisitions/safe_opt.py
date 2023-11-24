@@ -36,6 +36,10 @@ class SafeOpt(BaseAquisition):
             case _:
                 raise NotImplementedError
 
+    def override_set_initialization(self) -> bool | str:
+        # TODO: somehow override initialization for global lower_bound
+        return super().override_set_initialization()
+
     def is_internal_step(self, step: int = 0):
         return True if step == 0 else False
 

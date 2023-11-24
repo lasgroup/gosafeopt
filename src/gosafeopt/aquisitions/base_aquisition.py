@@ -36,6 +36,12 @@ class BaseAquisition(ABC):
     def evaluate(self, X: Tensor, step: int = 0) -> Tensor:
         pass
 
+    def after_optimization(self):
+        pass
+
+    def before_optimization(self):
+        pass
+
     def override_set_initialization(self) -> bool | str:
         """With this method an aquisition function can override the set initialization"""
         return False
@@ -85,6 +91,3 @@ class BaseAquisition(ABC):
         penalties[slack_id] = -300 * penalties[slack_id] ** 2
         # penalties *= 10000
         return torch.sum(penalties[:, 1:], axis=1)
-
-    def reset(self):
-        pass

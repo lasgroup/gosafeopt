@@ -9,7 +9,8 @@ import gosafeopt
 from gosafeopt.aquisitions.go_safe_opt import OptimizationStep
 from gosafeopt.experiments.environment import Environment
 from gosafeopt.experiments.backup import Backup
-from typing import Optional
+from typing import Optional, Tuple
+from torch import Tensor
 
 
 class Experiment:
@@ -23,7 +24,7 @@ class Experiment:
         self.backup = backup
         self.render_list = []
 
-    def rollout(self, param, episode=0):
+    def rollout(self, param: Tensor, episode=0) -> Tuple[Tensor, Tensor, bool, dict]:
         initial_state, _ = self.env.reset()
         trajectory = [initial_state]
         rewards = np.zeros(self.c["dim_obs"])
@@ -58,13 +59,13 @@ class Experiment:
 
         # TODO: refactor
         if (
-            not backup_triggered
-            and self.backup is not None
-            and not self.backup.goState.get_step() == OptimizationStep.LOCAL
+            self.backup is not None
+            and self.backup.go_state.get_step() == OptimizationStep.GLOBAL
+            and not backup_triggered
             and not np.any(rewards[1:] < 0)
         ):
             param.to(gosafeopt.device)
-            GoSafeOptState(self.c).goToS1()
+            GoSafeOptState(self.c).go_to_local()
             SafeSet(self.c).add_new_safe_set(param.reshape(1, -1))
             SafeSet(self.c).change_to_latest_safe_set()
 
