@@ -59,21 +59,11 @@ class PendulumWandbLogger(WandbLogger):
             # content["Contour"] = self.plotter.figContour
             content["Chart"] = wandb.Image(self.pltPlotter.getLastPlot())
 
-        if (
-            backup_triggered
-            or newMin
-            or not episode % self.config["save_interval"]
-            or torch.any(y[1:] < 0)
-        ):
+        if backup_triggered or newMin or not episode % self.config["save_interval"] or torch.any(y[1:] < 0):
             if self.config["log_video"]:
-                fname = (
-                    "{}/video/".format(wandb.run.dir)
-                    + f"/rl-video-episode-{episode}.mp4"
-                )
+                fname = "{}/video/".format(wandb.run.dir) + f"/rl-video-episode-{episode}.mp4"
                 if os.path.isfile(fname):
-                    content["video"] = wandb.Video(
-                        fname, format="gif"
-                    )  # "Surface": self.plotter.figSurface
+                    content["video"] = wandb.Video(fname, format="gif")  # "Surface": self.plotter.figSurface
 
         super().log(
             model,

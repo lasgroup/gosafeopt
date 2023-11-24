@@ -4,18 +4,18 @@ import torch
 
 
 class SafeEI(BaseAquisition):
-    def __init__(self, model, c, context = None, data=None):
+    def __init__(self, model, c, context=None, data=None):
         super().__init__(model, c, context, data)
 
     def evaluate(self, X):
-        l, u = self.getBounds(X)
-        
+        l, u = self.get_confidence_interval(X)
+
         xi = 0.01
 
-        mu = X.mean.reshape(-1, self.c["dim_obs"])[:,0]
-        sigma  = X.variance.reshape(-1, self.c["dim_obs"])[:,0]
+        mu = X.mean.reshape(-1, self.config["dim_obs"])[:, 0]
+        sigma = X.variance.reshape(-1, self.config["dim_obs"])[:, 0]
 
-        mean_sample = self.model.posterior(self.data.train_x).mean.detach()[:,0]
+        mean_sample = self.model.posterior(self.data.train_x).mean.detach()[:, 0]
         mu_sample_opt = torch.max(mean_sample)
 
         imp = mu - mu_sample_opt - xi
@@ -25,10 +25,9 @@ class SafeEI(BaseAquisition):
 
         slack = l - self.fmin
 
-
-        if self.c["use_soft_penalties"]:
-            ei += self.penalties(slack)
+        if self.config["use_soft_penalties"]:
+            ei += self.soft_penalty(slack)
         else:
             ei[:] = torch.all(l[:, 1:] > self.fmin[1:], axis=1)
-            ei [~S] = -1e10
-        return ei  
+            ei[~S] = -1e10
+        return ei

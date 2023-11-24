@@ -9,6 +9,7 @@ from botorch.models.transforms.input import Normalize
 import gosafeopt
 
 
+# TODO: somehow refactor this
 def create_model(config, data, state_dict=None):
     bounds = torch.vstack([torch.tensor(config["domain_start"]), torch.tensor(config["domain_end"])])
 

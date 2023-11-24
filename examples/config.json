@@ -64,7 +64,6 @@
         "swarmopt_p": 1,
         "swarmopt_g": 1,
         "swarmopt_w": 0.9,
-        "append_train_set": false,
         "use_soft_penalties": true,
         "safe_opt_interior_lb": 1,
         "safe_opt_marginal_lb": 0.5,

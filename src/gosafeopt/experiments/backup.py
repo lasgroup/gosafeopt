@@ -1,8 +1,10 @@
-from gosafeopt.aquisitions.go_safe_opt import GoSafeOptState
+from gosafeopt.aquisitions.go_safe_opt import GoSafeOptState, OptimizationStep
 import torch
 from scipy.stats import norm
 import numpy as np
 from gosafeopt.tools.logger import Logger
+
+# TODO: generic backup class
 
 
 class Backup:
@@ -17,9 +19,7 @@ class Backup:
         self.lastBackupFromInterior = False
 
     def is_safe(self, state):
-        # TODO: maybe use backup at s1 aswell with reward...
-        # if self.data.backup is None or (not np.any(reward[1:] < 0) and self.goState.skipBackupAtRollout()):
-        if self.data.backup is None or self.goState.skipBackupAtRollout():
+        if self.data.backup is None or self.goState.get_step() == OptimizationStep.LOCAL:
             return True
 
         diff = torch.linalg.norm(self.data.backup - state, axis=1)
@@ -62,7 +62,7 @@ class Backup:
         return self.data.backup_k[torch.argmin(diff)]
 
     def reset(self):
-        if self.data.failed_k is not None and self.goState.skipBackupAtRollout():
+        if self.data.failed_k is not None and self.goState.get_step() == OptimizationStep.LOCAL:
             mask = torch.ones(len(self.data.failed_x_rollout), dtype=bool)
             for i in range(len(self.data.failed_x_rollout)):
                 mask[i] = self.is_safe(self.data.failed_x_rollout[i])

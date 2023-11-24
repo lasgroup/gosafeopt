@@ -5,7 +5,7 @@ import torch
 
 from gosafeopt.optim import get_optimizer
 from gosafeopt.aquisitions import get_aquisition
-from gosafeopt.optim.base_optimizer import OptimizerState
+from gosafeopt.optim.base_optimizer import SafeSet
 from gosafeopt.tools.data import Data
 from botorch import fit_gpytorch_mll
 from gosafeopt.tools.file import createFolderINE
@@ -25,13 +25,14 @@ class Trainer:
         self.data = Data() if data is None else data
         self.context = context
         self.state_dict = state_dict
+        # TODO: remove this
         createFolderINE("{}/res".format(wandb.run.dir))
         createFolderINE("{}/video".format(wandb.run.dir))
         createFolderINE("{}/plot".format(wandb.run.dir))
         self.rewardMax = -1e10 * np.ones(self.config["dim_obs"])  # Something small
         self.bestK = None
 
-    def train(self, experiment, model, safePoints):
+    def train(self, experiment, model, safePoints: torch.Tensor):
         k = np.zeros(self.config["dim_params"])
 
         forExpression = (
@@ -62,7 +63,7 @@ class Trainer:
                         Logger.info(f"New Lenghtscale: {m.covar_module.base_kernel.lengthscale}")
                     self.state_dict = gp.state_dict()
 
-                k, acf_val = optimizer.getNextPoint()
+                k, acf_val = optimizer.next_params()
                 Logger.info("{}/{} next k: {}".format(i, self.config["n_opt_samples"], k))
 
                 reward, trajectory, backup_triggered, info = experiment.rollout(k, i)
@@ -82,7 +83,7 @@ class Trainer:
                 else:
                     Logger.info("Reward at Iteration: {},y:{} at {}".format(i, reward, k))
 
-                OptimizerState(self.config).updateSafeSets(reward[0])
+                SafeSet(self.config).calculate_current_set(reward[0])
 
                 if experiment.backup is not None:
                     self.data.append_backup(trajectory, reward, k)

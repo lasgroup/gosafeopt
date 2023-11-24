@@ -1,6 +1,5 @@
 import torch
 import pandas as pd
-from gosafeopt.tools.logger import Logger
 import gosafeopt
 
 
@@ -9,7 +8,16 @@ class Data:
     This class should hold all the data needed for training as the optimizers and aquisition functions should not store any data.
     """
 
-    def __init__(self, train_x=None, train_y=None, train_x_rollout=None, train_y_rollout=None, failed_k=None, k_rollout=None, failed_x_rollout=None):
+    def __init__(
+        self,
+        train_x=None,
+        train_y=None,
+        train_x_rollout=None,
+        train_y_rollout=None,
+        failed_k=None,
+        k_rollout=None,
+        failed_x_rollout=None,
+    ):
         self.train_x = train_x
         self.train_y = train_y
 
@@ -17,8 +25,8 @@ class Data:
         self.backup = train_x_rollout.to(gosafeopt.device) if train_x_rollout is not None else None
         self.backup_loss = train_y_rollout.to(gosafeopt.device) if train_y_rollout is not None else None
         self.backup_k = k_rollout.to(gosafeopt.device) if k_rollout is not None else None
-        self.failed_k = failed_k 
-        self.failed_x_rollout = failed_x_rollout 
+        self.failed_k = failed_k
+        self.failed_x_rollout = failed_x_rollout
 
     def append_data(self, train_x, train_y):
         if self.train_x is None:
@@ -51,7 +59,7 @@ class Data:
         self.backup_loss = None
         self.backup_k = None
         self.failed_k = None
-        self.failed_x_rollout =None
+        self.failed_x_rollout = None
 
     def save(self, folder=""):
         features = pd.DataFrame(self.train_x.to("cpu"))

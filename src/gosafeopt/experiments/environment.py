@@ -17,7 +17,6 @@ class Environment(Env, ABC):
         """
         pass
 
-    @abstractmethod
     def reset(self):
         pass
 
@@ -36,3 +35,4 @@ class Environment(Env, ABC):
         This method will be executed after each loss evaluation.
         Useful i.e for setting the best found parameters so far to stabilize the robot.
         """
+        pass

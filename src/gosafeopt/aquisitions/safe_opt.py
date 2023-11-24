@@ -1,80 +1,98 @@
-from gosafeopt.aquisitions.base_aquisition import BaseAquisition
+from botorch.models.pairwise_gp import GPyTorchPosterior
 import torch
+import gosafeopt
+from gosafeopt.aquisitions.base_aquisition import BaseAquisition
+from gosafeopt.tools.misc import singleton
+from torch.distributions.multivariate_normal import MultivariateNormal
+from gosafeopt.tools.data import Data
+from typing import Optional
+from torch import Tensor
 
-import gpytorch
+
+@singleton
+class SafeOptState(object):
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.best_lcb = -1e10
 
 
 class SafeOpt(BaseAquisition):
-    def __init__(self, model, c, context=None, data=None):
-        super().__init__(model, c, context, data)
-        self.min_var = torch.ones(c["dim_obs"])*c["min_var"]
+    def __init__(self, model, config: dict, context: Optional[torch.Tensor] = None, data: Optional[Data] = None):
+        super().__init__(model, config=config, context=context, data=data, n_steps=3)
 
-    def evaluate(self, X):
-        # Safe set, expanders and maximizes
-        S = torch.zeros(X.mean.shape[0], dtype=bool)
-        S[:] = False
-        G = S.clone()
-        M = S.clone()
+        self.safeOptState = SafeOptState()
 
-        # Upper and lower confidence bound
-        l, u = self.getBounds(X)
+    def evaluate(self, X: Tensor, step: int = 0) -> Tensor:
+        posterior = self.model_posterior(X)
+        match step:
+            case 0:
+                return self.lower_bound(posterior)
+            case 1:
+                return self.maximizers(posterior)
+            case 2:
+                return self.expanders(posterior)
+            case _:
+                raise NotImplementedError
 
-        # Compute Safe Set
-        S[:] = torch.all(l[:, 1:] > self.fmin[1:], axis=1)
+    def is_internal_step(self, step: int = 0):
+        return True if step == 0 else False
 
-        if not torch.any(S):
-            res = -1e10*torch.ones_like(X.mean[:, 0])
-            safestPoint = torch.argmax(l.min(axis=1)[0])
-            res[safestPoint] = -1e5
-            return res
+    def lower_bound(self, X: GPyTorchPosterior) -> Tensor:
+        l, _ = self.get_confidence_interval(X)
 
-        # Set of maximisers
-        M[S] = u[S, 0] >= torch.max(l[S, 0])
-        max_var = torch.max(u[M, 0] - l[M, 0])
+        maxLCB = torch.max(l[:, 0])
+        if maxLCB > self.safeOptState.best_lcb:
+            self.safeOptState.best_lcb = maxLCB
 
-        # Optimistic set of possible expanders
-        s = torch.logical_and(S, ~M)
-        idx = s.clone()
-        s[idx] = (torch.max((u[idx, 1:] - l[idx, 1:]), axis=1)[0] > max_var)
-        idx = s.clone()
-        s[idx] = torch.any(u[idx, 1:] - l[idx, 1:] > self.min_var[1:], axis=1)
+        slack = l - self.fmin
 
-        if torch.any(s) and not torch.all(S):
-            # set of safe expanders
-            G_safe = torch.zeros(torch.count_nonzero(s), dtype=bool)
-            sort_index = torch.max(u[s, :] - l[s, :], axis=1)[0].argsort()
-            for index in reversed(sort_index):
-                fantasyTarget = u[s][index]
-                fantasyInput = self.points[s][index]
+        return l[:, 0] + self.soft_penalty(slack)
 
-                # Fantasize doesn't transform inputs somehow
-                if self.c["normalize_input"]:
-                    fantasyInput = self.model.models[0].input_transform(fantasyInput)[0].squeeze()
+    def maximizers(self, X: GPyTorchPosterior) -> Tensor:
+        l, u = self.get_confidence_interval(X)
+        scale = 1  # if not self.c["normalize_output"] else self.model.models[0].outcome_transform._stdvs_sq[0]
+        values = (u - l)[:, 0] / scale
+        improvement = u[:, 0] - self.safeOptState.best_lcb
 
-                fModel = self.model.condition_on_observations(fantasyInput.repeat(
-                    self.c["dim_obs"], 1, 1), fantasyTarget.reshape(1, 1, -1))
-                fModel.eval()
+        interest_function = torch.sigmoid(100 * improvement / scale)
+        interest_function -= interest_function.min()
+        c = interest_function.max() - interest_function.min()
+        c[c < 1e-5] = 1e-5
+        interest_function /= c
 
-                with torch.no_grad(), gpytorch.settings.fast_pred_var():
-                    with gpytorch.settings.fast_pred_samples():
-                        pred = fModel.posterior(self.points[~S])
+        slack = l - self.fmin
+        penalties = self.soft_penalty(slack)
 
-                l2 = pred.mean.detach()[0] - self.c["scale_beta"] * \
-                    torch.sqrt(self.c["beta"]*pred.variance.detach())[0]
-                G_safe[index] = torch.any(torch.all(l2[:, 1:] >= self.fmin[1:], axis=1))
+        value = (values + penalties) * interest_function
 
-                if G_safe[index]:
-                    break
+        return value
 
-            G[s] = G_safe
+    def expanders(self, X: GPyTorchPosterior) -> Tensor:
+        l, u = self.get_confidence_interval(X)
 
-        MG = torch.logical_or(M, G)
-        value = torch.max((u - l), axis=1)[0]
+        scale = 1  # if not self.c["normalize_output"] else self.model.models[0].outcome_transform._stdvs_sq[0]
+        values = (u - l)[:, 0] / scale
 
-        if self.c["use_soft_penalties"]:
-            slack = l - self.fmin
-            value[~MG] += self.penalties(slack[~MG])
-        else:
-            value[~MG] = -1e10
+        slack = l - self.fmin
+        penalties = self.soft_penalty(slack)
+        # print(penalties)
 
-        return value.double()
+        # TODO how to set scale?
+        normal = MultivariateNormal(
+            loc=torch.zeros_like(slack[:, 1:], device=gosafeopt.device),
+            covariance_matrix=torch.eye(slack.shape[1] - 1, device=gosafeopt.device),
+        )
+        interest_function = normal.log_prob(slack[:, 1:])
+        interest_function -= interest_function.min()
+        c = interest_function.max() - interest_function.min()
+        c[c < 1e-5] = 1e-5
+        interest_function /= c
+
+        value = (values + penalties) * interest_function
+
+        return value
+
+    def reset(self):
+        self.safeOptState.best_lcb = -1e10

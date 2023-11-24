@@ -5,17 +5,17 @@ from botorch.optim import optimize_acqf
 import torch
 from gosafeopt.optim.base_optimizer import BaseOptimizer
 
+
 # TODO maybe fix again
 class ScipyOpt(BaseOptimizer):
-
     def __init__(self, aquisition, c, context=None):
         super().__init__(aquisition, c, context)
 
     def optimize(self):
-        bounds = torch.vstack([torch.tensor(self.c["domain_start"]), torch.tensor(self.c["domain_end"])])
+        bounds = torch.vstack([torch.tensor(self.config["domain_start"]), torch.tensor(self.config["domain_end"])])
         # xInit = self.getInitPoints()
         xInit = gen_batch_initial_conditions(
-            self.aquisition, bounds, q=1, num_restarts=self.c["set_size"], raw_samples=self.c["set_size"]
+            self.aquisition, bounds, q=1, num_restarts=self.config["set_size"], raw_samples=self.config["set_size"]
         )
         batch_candidates, batch_acq_values = gen_candidates_scipy(
             initial_conditions=xInit,

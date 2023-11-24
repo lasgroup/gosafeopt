@@ -1,11 +1,15 @@
 from logging import warn
 import torch
 from gosafeopt.aquisitions.go_safe_opt import GoSafeOptState
-from gosafeopt.optim.base_optimizer import OptimizerState
+from gosafeopt.optim.base_optimizer import SafeSet
 from gosafeopt.tools.logger import Logger
 import numpy as np
 from gymnasium.utils.save_video import save_video
 import gosafeopt
+from gosafeopt.aquisitions.go_safe_opt import OptimizationStep
+from gosafeopt.experiments.environment import Environment
+from gosafeopt.experiments.backup import Backup
+from typing import Optional
 
 
 class Experiment:
@@ -13,7 +17,7 @@ class Experiment:
     Base class for experiments
     """
 
-    def __init__(self, config, env, backup=None):
+    def __init__(self, config: dict, env: Environment, backup: Optional[Backup] = None):
         self.c = config
         self.env = env
         self.backup = backup
@@ -52,16 +56,17 @@ class Experiment:
         self.env.after_experiment()
         self.process_video(episode)
 
+        # TODO: refactor
         if (
             not backup_triggered
             and self.backup is not None
-            and not self.backup.goState.skipBackupAtRollout()
+            and not self.backup.goState.get_step() == OptimizationStep.LOCAL
             and not np.any(rewards[1:] < 0)
         ):
             param.to(gosafeopt.device)
             GoSafeOptState(self.c).goToS1()
-            OptimizerState(self.c).addSafeSet(param.reshape(1, -1))
-            OptimizerState(self.c).changeToLastSafeSet()
+            SafeSet(self.c).add_new_safe_set(param.reshape(1, -1))
+            SafeSet(self.c).change_to_latest_safe_set()
 
         rewards = rewards / len(trajectory)
         return torch.from_numpy(rewards), torch.tensor(trajectory), backup_triggered, info

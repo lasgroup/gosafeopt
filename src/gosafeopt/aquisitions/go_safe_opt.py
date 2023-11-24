@@ -1,75 +1,74 @@
-
-from gosafeopt.aquisitions.safe_opt_multistage import SafeOptMultiStage
+from enum import Enum
+from gosafeopt.aquisitions.safe_opt import SafeOpt
 from gosafeopt.tools.misc import singleton
 import torch
 import gosafeopt
+from torch import Tensor
+from gosafeopt.tools.data import Data
+from typing import Optional
+
+from botorch.models.pairwise_gp import GPyTorchPosterior
+
+
+class OptimizationStep(Enum):
+    LOCAL = 1
+    GLOBAL = 2
 
 
 @singleton
 class GoSafeOptState(object):
-
-    def __init__(self, config):
+    def __init__(self, config: dict):
         self.config = config
-        self.reset()
-
-    def reset(self):
-        self.max_s1 = self.config["max_s1"]
-        self.max_s3 = self.config["max_s3"]
+        self.n_max_local: int = config["n_max_local"]
+        self.n_max_global: int = config["n_max_global"]
         self.n = 0
-        self.previousState = "s1"
 
     def goToS1(self):
         self.n = 0
 
     def advance(self):
-        self.previousState = self.getState()
         self.n += 1
         self.n %= self.max_s1 + self.max_s3
 
-    def skipBackupAtRollout(self):
-        return self.previousState == "s1"
-
-    def getState(self, n=None):
-        if self.n < self.max_s1:
-            return "s1"
-        elif self.n < self.max_s3 + self.max_s1:
-            return "s3"
+    def get_step(self):
+        if self.n < self.n_max_local:
+            return OptimizationStep.LOCAL
+        elif self.n < self.n_max_global + self.n_max_local:
+            return OptimizationStep.GLOBAL
 
 
-class GoSafeOpt(SafeOptMultiStage):
-    def __init__(self, model, c, context=None, data=None):
-        super().__init__(model, c, context, data)
+class GoSafeOpt(SafeOpt):
+    def __init__(self, model, config: dict, context: Optional[Tensor] = None, data: Optional[Data] = None):
+        super().__init__(model, config, context, data)
 
-        self.goState = GoSafeOptState(c)
-        self.s3_executed = False
+        self.goState = GoSafeOptState(config)
 
-    def hasNextStage(self):
-        state = self.goState.getState()
-        has = state == "s1" and super().hasNextStage() or state == "s3" and not self.s3_executed
-        return has
-
-    def getStage(self):
-        state = self.goState.getState()
-        if state == "s1":
-            return super().getStage()
+    @property
+    def n_steps(self) -> int:
+        if self.goState.get_step == OptimizationStep.LOCAL:
+            return 3
         else:
-            return self.s3, True
+            return 1
 
-    def advanceState(self):
-        self.goState.advance()
-
-    def advanceStage(self):
-        if self.goState.getState() == "s1":
-            return super().advanceStage()
+    def is_internal_step(self, step: int = 0):
+        if self.goState.get_step == OptimizationStep.LOCAL:
+            return super().is_internal_step(step)
         else:
-            self.s3_executed = True
+            return False
 
-    # TODO No need to compute posterior
-    def s3(self, X):
+    def evaluate(self, X: Tensor, step: int = 0) -> Tensor:
+        if self.goState.get_step == OptimizationStep.LOCAL:
+            return super().evaluate(X, step)
+        else:
+            return self.s3(X)
+
+    # TODO: No need to compute posterior
+    def s3(self, X: Tensor):
         data = self.data.train_x
         if self.data.failed_k is not None:
             data = torch.vstack([data, self.data.failed_k])
 
-        distance = self.model.models[0].covar_module.covar_dist(data.to(gosafeopt.device), self.points).min(axis=0)[0]
+        # TODO: rethink this
+        distance = self.model.models[0].covar_module.covar_dist(data.to(gosafeopt.device), X).min(axis=0)[0]
 
         return distance

@@ -6,10 +6,8 @@ class UCB(BaseAquisition):
         super().__init__(model, c, context, data)
 
     def evaluate(self, X):
-
-        _, ucb = self.getBounds(X)
+        _, ucb = self.get_confidence_interval(X)
 
         loss_perf = ucb[:, 0]
-
 
         return loss_perf

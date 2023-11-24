@@ -5,14 +5,14 @@ import numpy as np
 import wandb
 from gosafeopt.aquisitions.go_safe_opt import GoSafeOptState
 from gosafeopt.aquisitions.max_mean import MaxMean
-from gosafeopt.aquisitions.safe_opt_multistage import SafeOptMultiStageState
+from gosafeopt.aquisitions.safe_opt_multistage import SafeOpt
 from gosafeopt.aquisitions.safe_ucb import SafeUCB
 from gosafeopt.aquisitions.safe_lcb import SafeLCB
 from gosafeopt.experiments.backup import Backup
 from gosafeopt.experiments.experiment import Experiment
 from gosafeopt.models import create_model
 from gosafeopt.optim import get_optimizer
-from gosafeopt.optim.base_optimizer import OptimizerState
+from gosafeopt.optim.base_optimizer import SafeSet
 from gosafeopt.optim.swarm_opt import SwarmOpt
 from pendulum.wandblogger import PendulumWandbLogger
 from pendulum.environments import PendulumGymEnvWithDynamics
@@ -151,9 +151,7 @@ def train(
         config["context"] = context
 
         Logger.setVerbosity(4)
-        Logger.info(
-            "Using: {} with device {}".format(config["aquisition"], gosafeopt.device)
-        )
+        Logger.info("Using: {} with device {}".format(config["aquisition"], gosafeopt.device))
 
         if beta is not None:
             config["beta"] = beta
@@ -221,9 +219,7 @@ def train(
         envIdeal = PendulumGymEnvWithDynamics(config_pendulum, U_ideal)
         experimentIdeal = Experiment(config, envIdeal)
 
-        _, trajectory_ideal, backup_triggered, info = experimentIdeal.rollout(
-            np.zeros(2)
-        )
+        _, trajectory_ideal, backup_triggered, info = experimentIdeal.rollout(np.zeros(2))
 
         logger = PendulumWandbLogger(config, config_pendulum, trajectory_ideal, context)
 
@@ -233,17 +229,11 @@ def train(
         if config["log_video"]:
             seq = ImageSequenceClip("{}/plot".format(wandb.run.dir), fps=4)
             seq.write_gif("{}/plot/animation.gif".format(wandb.run.dir), fps=4)
-            wandb.log(
-                data={
-                    "animation": wandb.Image(
-                        "{}/plot/animation.gif".format(wandb.run.dir)
-                    )
-                }
-            )
+            wandb.log(data={"animation": wandb.Image("{}/plot/animation.gif".format(wandb.run.dir))})
 
-        OptimizerState(config).reset()
+        SafeSet(config).reset()
         GoSafeOptState(config).reset()
-        SafeOptMultiStageState().reset()
+        SafeOpt().reset()
 
         logger.save("{}/res/datalogger.obj".format(wandb.run.dir))
         # ml(config_path=config_path, data_path="{}/res".format(wandb.run.dir))
@@ -274,7 +264,7 @@ def optimize_context(context: float = typer.Option(1.0, help="Context")):
     model = create_model(config, data, state_dict)
     aq = MaxMean(model, config, torch.tensor([[context]]))
     opt = SwarmOpt(aq, config, torch.tensor([[context]]))
-    opt.getNextPoint()
+    opt.next_params()
 
 
 @app.command()
@@ -297,7 +287,7 @@ def ml(
     model = create_model(config, data)
     aquisition = SafeUCB(model, config, context, data=data)
     optimizer = get_optimizer(aquisition, config, context)
-    k, acf_val = optimizer.getNextPoint()
+    k, acf_val = optimizer.next_params()
     Logger.info(f"Best k for context {context} is: {k}")
 
     env = PendulumGymEnv(config, config_pendulum)
@@ -334,7 +324,7 @@ def lower():
     context = CONTEXT["FLYING_TROT"][1]
     aquisition = SafeLCB(model, config, context, data=data)
     optimizer = get_optimizer(aquisition, config, context)
-    k, acf_val = optimizer.getNextPoint()
+    k, acf_val = optimizer.next_params()
 
     print(k)
 
