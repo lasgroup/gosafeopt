@@ -16,10 +16,19 @@ class OptimizationStep(Enum):
 
 
 class GoSafeOpt(SafeOpt):
-    def __init__(self, model, config: dict, data: Data, context: Optional[Tensor] = None):
-        super().__init__(model, config, context, data)
-        GoSafeOpt.n_max_local: int = config["n_max_local"]
-        GoSafeOpt.n_max_global: int = config["n_max_global"]
+    def __init__(
+        self,
+        dim_obs: int,
+        scale_beta: float,
+        beta: float,
+        n_max_local: int,
+        n_max_global: int,
+        context: Optional[Tensor] = None,
+        data: Optional[Data] = None,
+    ):
+        super().__init__(dim_obs, scale_beta, beta, context, data)
+        GoSafeOpt.n_max_global = n_max_global
+        GoSafeOpt.n_max_local = n_max_local
         GoSafeOpt.n = 0
 
     @classmethod

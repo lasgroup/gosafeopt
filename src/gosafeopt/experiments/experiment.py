@@ -1,14 +1,10 @@
-from logging import warn
+from numpy.typing import NDArray
 import torch
-from gosafeopt.aquisitions.go_safe_opt import GoSafeOptState
-from gosafeopt.optim.base_optimizer import SafeSet
+from gosafeopt.experiments.backup import BackupStrategy
 from gosafeopt.tools.logger import Logger
 import numpy as np
 from gymnasium.utils.save_video import save_video
-import gosafeopt
-from gosafeopt.aquisitions.go_safe_opt import OptimizationStep
 from gosafeopt.experiments.environment import Environment
-from gosafeopt.experiments.backup import BackupStrategy, GoSafeOptBackup
 from typing import Optional, Tuple
 from torch import Tensor
 from gosafeopt.tools.data import Data
@@ -27,21 +23,21 @@ class Experiment:
         self.render_list = []
 
     def rollout(self, param: Tensor, episode=0) -> Tuple[Tensor, Tensor, bool, dict]:
-        initial_state, _ = self.env.reset()
+        np_param = param.numpy()
+        initial_state, info = self.reset()
         trajectory = [initial_state]
-        rewards = np.zeros(self.c["dim_obs"])
+        rewards: NDArray = np.zeros(self.c["dim_obs"])
         done = False
         backup_triggered = False
-        info = None
 
         if self.backup is not None:
             self.backup.reset()
 
-        self.env.before_experiment(param)
+        self.env.before_experiment(np_param)
 
         i = 0
         while not done:
-            observation, reward, done, truncated, info = self.env.step(param[0 : self.c["dim_params"]])
+            observation, reward, done, truncated, info = self.env.step(np_param[0 : self.c["dim_params"]])
 
             rewards += reward
             trajectory.append(observation)
@@ -57,25 +53,27 @@ class Experiment:
             i += 1
 
         self.env.after_experiment()
+
         if self.backup is not None:
-            self.backup.after_rollout(param, rewards)
+            self.backup.after_rollout(np_param, rewards, backup_triggered)
         self.process_video(episode)
 
         rewards = rewards / len(trajectory)
         return torch.from_numpy(rewards), torch.tensor(trajectory), backup_triggered, info
 
     def reset(self):
-        self.env.reset()
+        initial_state, info = self.env.reset()
         self.render_list = []
         if self.backup is not None:
             self.backup.reset()
+        return initial_state, info
 
     def finish(self):
         self.env.close()
 
     def process_backup_strategy(self, observation, reward, i):
         if self.backup is not None:
-            if not self.backup.is_safe(observation):
+            if not self.backup.is_safe(observation, reward):
                 param = self.backup.get_backup_policy(observation)
                 self.env.backup(param)
                 self.data.append_failed(param, torch.tensor(observation))
@@ -106,4 +104,4 @@ class Experiment:
                     episode_trigger=epsodeTrigger,
                 )
             except Exception as e:
-                warn(f"couldnt log video: {e}")
+                Logger.warn(f"couldnt log video {e}")

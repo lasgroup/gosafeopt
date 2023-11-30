@@ -1,6 +1,7 @@
 from abc import ABC, ABCMeta, abstractmethod
 from typing import Optional
 from gymnasium import Env
+from numpy.typing import NDArray
 import torch
 
 
@@ -10,7 +11,7 @@ class Environment(Env, metaclass=ABCMeta):
         self.render_mode = render_mode
 
     @abstractmethod
-    def backup(self, params):
+    def backup(self, params: NDArray):
         """
         This method will be called with the backup parameters of the backup strategy.
         This method should send the backup parameters to the robot/sim.
@@ -18,7 +19,7 @@ class Environment(Env, metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def before_experiment(self, params):
+    def before_experiment(self, params: NDArray):
         """
         This method will be executed before each loss evaluation.
         This method should be implemented to set the parameters that will be evaluated on the robot/sim.

@@ -16,21 +16,34 @@ import gosafeopt
 
 class BaseAquisition(ABC):
     def __init__(
-        self, model, config: dict, context: Optional[Tensor] = None, data: Optional[Data] = None, n_steps: int = 1
+        self,
+        dim_obs: int,
+        scale_beta: float,
+        beta: float,
+        context: Optional[Tensor] = None,
+        data: Optional[Data] = None,
+        n_steps: int = 1,
     ):
-        self.model = model
-        self.config = config
+        self.dim_obs = dim_obs
+        self.scale_beta = scale_beta
+        self.beta = beta
         self.context = context
         self.data = data
         self.steps = n_steps
+        self.model: None | ModelListGP = None
+        self.fmin = torch.zeros(self.dim_obs).to(gosafeopt.device)
 
-        self.fmin = torch.zeros(config["dim_obs"]).to(gosafeopt.device)
+    def update_model(self, model: ModelListGP):
+        self.model = model
 
     def model_posterior(self, X: Tensor) -> GPyTorchPosterior:
-        with torch.no_grad(), gpytorch.settings.fast_pred_var():
-            with gpytorch.settings.fast_pred_samples():
-                x = self.model.posterior(X)
-                return x
+        if self.model is not None:
+            with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                with gpytorch.settings.fast_pred_samples():
+                    x = self.model.posterior(X)
+                    return x
+        else:
+            raise Exception("Model is not initialized")
 
     @abstractmethod
     def evaluate(self, X: Tensor, step: int = 0) -> Tensor:
@@ -60,12 +73,12 @@ class BaseAquisition(ABC):
         self.model.eval()
 
     def get_confidence_interval(self, posterior: GPyTorchPosterior) -> Tuple[Tensor, Tensor]:
-        mean = posterior.mean.reshape(-1, self.config["dim_obs"])
-        var = posterior.variance.reshape(-1, self.config["dim_obs"])
+        mean = posterior.mean.reshape(-1, self.dim_obs)
+        var = posterior.variance.reshape(-1, self.dim_obs)
 
         # Upper and lower confidence bound
-        l = mean - self.config["scale_beta"] * torch.sqrt(self.config["beta"] * var)
-        u = mean + self.config["scale_beta"] * torch.sqrt(self.config["beta"] * var)
+        l = mean - self.scale_beta * torch.sqrt(self.beta * var)
+        u = mean + self.scale_beta * torch.sqrt(self.beta * var)
 
         return l, u
 

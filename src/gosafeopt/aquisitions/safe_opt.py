@@ -2,7 +2,6 @@ from botorch.models.pairwise_gp import GPyTorchPosterior
 import torch
 import gosafeopt
 from gosafeopt.aquisitions.base_aquisition import BaseAquisition
-from gosafeopt.tools.misc import singleton
 from torch.distributions.multivariate_normal import MultivariateNormal
 from gosafeopt.tools.data import Data
 from typing import Optional
@@ -10,9 +9,17 @@ from torch import Tensor
 
 
 class SafeOpt(BaseAquisition):
-    def __init__(self, model, config: dict, context: Optional[torch.Tensor] = None, data: Optional[Data] = None):
-        super().__init__(model, config=config, context=context, data=data, n_steps=3)
-        self.best_lcb = -1e10
+    best_lcb = -1e10
+
+    def __init__(
+        self,
+        dim_obs: int,
+        scale_beta: float,
+        beta: float,
+        context: Optional[Tensor] = None,
+        data: Optional[Data] = None,
+    ):
+        super().__init__(dim_obs, scale_beta, beta, context=context, data=data, n_steps=3)
 
     def evaluate(self, X: Tensor, step: int = 0) -> Tensor:
         posterior = self.model_posterior(X)
@@ -37,8 +44,8 @@ class SafeOpt(BaseAquisition):
         l, _ = self.get_confidence_interval(X)
 
         maxLCB = torch.max(l[:, 0])
-        if maxLCB > safe_opt_state.best_lcb:
-            safe_opt_state.best_lcb = maxLCB
+        if maxLCB > SafeOpt.best_lcb:
+            SafeOpt.best_lcb = maxLCB
 
         slack = l - self.fmin
 
@@ -48,7 +55,7 @@ class SafeOpt(BaseAquisition):
         l, u = self.get_confidence_interval(X)
         scale = 1  # if not self.c["normalize_output"] else self.model.models[0].outcome_transform._stdvs_sq[0]
         values = (u - l)[:, 0] / scale
-        improvement = u[:, 0] - safe_opt_state.best_lcb
+        improvement = u[:, 0] - SafeOpt.best_lcb
 
         interest_function = torch.sigmoid(100 * improvement / scale)
         interest_function -= interest_function.min()
@@ -71,7 +78,6 @@ class SafeOpt(BaseAquisition):
 
         slack = l - self.fmin
         penalties = self.soft_penalty(slack)
-        # print(penalties)
 
         # TODO how to set scale?
         normal = MultivariateNormal(

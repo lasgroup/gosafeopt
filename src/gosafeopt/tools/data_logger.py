@@ -9,17 +9,9 @@ from gosafeopt.models import create_model
 
 
 class WandbLogger:
-    def __init__(self, config, project, context=None):
-        wandb.init(
-            group=config["aquisition"],
-            project=project,
-            config=config,
-            dir=config["wandbdir"]
-        )
-
+    def __init__(self, config, project: str, dir: str):
+        wandb.init(project=project, config=config, dir=dir)
         self.i = 0
-
-        self.context = context
         wandb.save()
 
     def log(self, model, trajectory, x, y, data, rewardMax, loss_aq, backup_triggered, episode, additional=None):
@@ -40,7 +32,6 @@ class WandbLogger:
             for i in range(1, len(y)):
                 l[f"Constraint {i}"] = y[i]
 
-
         wandb.log(data=l, step=self.i)
         self.i += 1
 
@@ -48,6 +39,7 @@ class WandbLogger:
         wandb.finish()
 
 
+# TODO: move this to examples
 class DataLogger:
     def __init__(self, config, context=None):
         self.trajectory_buffer = []

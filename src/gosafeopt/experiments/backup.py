@@ -1,10 +1,10 @@
-from gosafeopt.aquisitions.go_safe_opt import GoSafeOpt, GoSafeOptState, OptimizationStep
+from numpy.typing import NDArray
+from gosafeopt.aquisitions.go_safe_opt import GoSafeOpt, OptimizationStep
 import torch
-from scipy.stats import norm
 import numpy as np
+from gosafeopt.optim.safe_set import SafeSet
 from gosafeopt.tools.logger import Logger
 from abc import ABC, abstractmethod
-from torch import Tensor
 from gosafeopt.tools.data import Data
 import gosafeopt
 
@@ -14,15 +14,15 @@ class BackupStrategy(ABC):
         super().__init__()
 
     @abstractmethod
-    def is_safe(self, state: Tensor) -> bool:
+    def is_safe(self, state: NDArray, reward: NDArray) -> bool:
         pass
 
     @abstractmethod
-    def get_backup_policy(self, state: Tensor) -> Tensor:
+    def get_backup_policy(self, state: NDArray) -> NDArray:
         pass
 
     @abstractmethod
-    def after_rollout(self, param: Tensor, rewards: Tensor):
+    def after_rollout(self, param: NDArray, rewards: NDArray, backup_triggered: bool):
         pass
 
     def reset(self):
@@ -42,24 +42,25 @@ class GoSafeOptBackup(BackupStrategy):
         self.data = data
         self.lastBackupFromInterior = False
 
-        self.backup_triggered = False
-
         self.reset()
 
-    def after_rollout(self, param: Tensor, rewards: Tensor):
+    def after_rollout(self, param: NDArray, rewards: NDArray, backup_triggerd: bool):
         if (
             GoSafeOpt.get_exploration_phase() == OptimizationStep.GLOBAL
-            and not self.backup_triggered
+            and not backup_triggerd
             and not np.any(rewards[1:] < 0)
         ):
-            param.to(gosafeopt.device)
+            p = torch.from_numpy(param)
+            p.to(gosafeopt.device)
             GoSafeOpt.go_to_local_exploration()
-            SafeSet(self.c).add_new_safe_set(param.reshape(1, -1))
-            SafeSet(self.c).change_to_latest_safe_set()
+            SafeSet.add_new_safe_set(p.reshape(1, -1))
+            SafeSet.change_to_latest_safe_set()
 
-    def is_safe(self, state) -> bool:
+    def is_safe(self, state: NDArray, reward: NDArray) -> bool:
         if self.data.backup is None or GoSafeOpt.get_exploration_phase() == OptimizationStep.LOCAL:
             return True
+        elif np.any(reward[1:] < 0):
+            return False
 
         diff = torch.linalg.norm(self.data.backup - state, axis=1)
         # diff /= diff.std()
@@ -83,14 +84,13 @@ class GoSafeOptBackup(BackupStrategy):
             self.lastBackupFromInterior = False
             return True
         else:
-            self.backup_triggered = True
             return False
 
-    def get_backup_policy(self, state):
+    def get_backup_policy(self, state: NDArray):
         diff = torch.linalg.norm(self.data.backup - state, axis=1)
 
-        interior_points = torch.min(self.data.backup_loss[:, 1:], axis=1)[0] > self.config["safe_opt_interior_lb"]
-        marginal_points = torch.min(self.data.backup_loss[:, 1:], axis=1)[0] > self.config["safe_opt_marginal_lb"]
+        interior_points = torch.min(self.data.backup_loss[:, 1:], axis=1)[0] > self.interior_lb
+        marginal_points = torch.min(self.data.backup_loss[:, 1:], axis=1)[0] > self.marginal_lb
         marginal_points = torch.logical_and(marginal_points, ~interior_points)
 
         if self.lastBackupFromInterior:
@@ -102,7 +102,6 @@ class GoSafeOptBackup(BackupStrategy):
         return self.data.backup_k[torch.argmin(diff)]
 
     def reset(self):
-        self.backup_triggered = False
         if self.data.failed_k is not None and GoSafeOpt.get_exploration_phase == OptimizationStep.LOCAL:
             mask = torch.ones(len(self.data.failed_x_rollout), dtype=bool)
             for i in range(len(self.data.failed_x_rollout)):

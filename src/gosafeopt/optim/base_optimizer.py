@@ -10,95 +10,34 @@ from typing import Optional
 from torch import Tensor
 from torch.distributions import MultivariateNormal
 from typing import Tuple
-
-
-class SafeSet:
-    current_safe_set = 0
-    best_sage_set = 0
-    y_min = -1e10
-    global_y_min = -1e10
-    i = 0
-
-    @classmethod
-    def configure(cls, config):
-        cls.config = config
-
-    @classmethod
-    def get_current_safe_set(self) -> Optional[Tensor]:
-        if len(self.safe_sets) == 0:
-            return None
-        else:
-            return self.safe_sets[self.current_safe_set]
-
-    @classmethod
-    def update_safe_set(self, X: Tensor, aquisition: BaseAquisition):
-        new_safe_set = X[aquisition.safe_set(X)]  # New params considered safe
-        safe_set = self.get_current_safe_set()
-        if safe_set is not None:
-            # Remove parameters considered unsafe under the updated model
-            still_safe = aquisition.safe_set(safe_set)
-            self.filter_safe_set(still_safe)  # Remove unsafe points
-            self.add_to_current_safe_set(new_safe_set)
-        else:
-            self.add_new_safe_set(new_safe_set)
-
-    @classmethod
-    def filter_safe_set(self, mask: Tensor):
-        self.safe_sets[self.current_safe_set] = self.safe_sets[self.current_safe_set][mask]
-
-    @classmethod
-    def add_to_current_safe_set(self, safeset: Tensor):
-        safeset.to(gosafeopt.device)
-        current_safe_set = self.get_current_safe_set()
-        if current_safe_set is not None:
-            self.safe_sets[self.current_safe_set] = torch.vstack([current_safe_set, safeset])
-        else:
-            self.safe_sets[self.current_safe_set] = safeset
-
-    @classmethod
-    def add_new_safe_set(self, safeset: Tensor):
-        safeset.to(gosafeopt.device)
-        self.safe_sets.append(safeset)
-
-    @classmethod
-    def change_to_latest_safe_set(self):
-        self.i = 0
-        self.current_safe_set = len(self.safe_sets) - 1
-        self.y_min = -1e10
-        Logger.info(f"BestSet: {self.best_sage_set} / CurrentSet: {self.current_safe_set}")
-
-    @classmethod
-    def change_to_best_safe_set(self):
-        self.i = 0
-        self.current_safe_set = self.best_sage_set
-        Logger.info(f"Changing to best set Nr. {self.best_sage_set}")
-
-    @classmethod
-    def calculate_current_set(self, yMin):
-        if self.global_y_min < yMin:
-            self.global_y_min = yMin
-            self.best_sage_set = self.current_safe_set
-            Logger.info(f"BestSet: {self.best_sage_set}")
-
-        if self.y_min < yMin:
-            self.y_min = yMin
-
-        if self.y_min < (
-            self.config["safe_opt_max_tries_without_progress_tolerance"] * self.global_y_min
-            if self.global_y_min > 0
-            else (2 - self.config["safe_opt_max_tries_without_progress_tolerance"]) * self.global_y_min
-        ):
-            self.i += 1
-
-        if self.i >= self.config["safe_opt_max_tries_without_progress"]:
-            self.change_to_best_safe_set()
+from gosafeopt.optim.safe_set import SafeSet
 
 
 class BaseOptimizer:
-    def __init__(self, aquisition: BaseAquisition, config: dict, context: Tensor):
+    def __init__(
+        self,
+        aquisition: BaseAquisition,
+        domain_start: Tensor,
+        domain_end: Tensor,
+        max_global_steps_without_progress_tolerance: int,
+        max_global_steps_without_progress: int,
+        set_size: int,
+        dim_params: int,
+        dim_context: int,
+        set_init: str,
+        context: Optional[Tensor],
+    ):
+        self.domain_start = domain_start
+        self.domain_end = domain_end
+        self.set_size = set_size
+        self.max_global_steps_without_progress = max_global_steps_without_progress
+        self.max_global_steps_without_progress_tolerance = max_global_steps_without_progress_tolerance
+        self.dim_params = dim_params
+        self.dim_context = dim_context
         self.aquisition = aquisition
-        self.config = config
         self.context = context
+        self.set_init = set_init
+        SafeSet.configure(max_global_steps_without_progress, max_global_steps_without_progress_tolerance)
 
     @abstractmethod
     def optimize(self, step: int = 0) -> Tuple[Tensor, Tensor]:
@@ -109,37 +48,26 @@ class BaseOptimizer:
         mode = override_mode if isinstance(override_mode, str) else mode
         X: Tensor
         if mode == "random":
-            X = random(
-                self.config["domain_start"],
-                self.config["domain_end"],
-                self.config["set_size"],
-                self.config["dim_params"],
-            )
+            X = random(self.domain_start, self.domain_end, self.set_size, self.dim_params)
             X = torch.hstack([X, self.context.repeat(len(X), 1)])
 
         elif mode == "uniform":
-            X = uniform(
-                self.config["domain_start"],
-                self.config["domain_end"],
-                self.config["set_size"],
-                self.config["dim_params"],
-            )
+            X = uniform(self.domain_start, self.domain_end, self.set_size, self.dim_params)
             X = torch.hstack([X, self.context.repeat(len(X), 1)])
 
         elif mode == "safe" or "safe_all":
-            N = self.config["set_size"]
+            N = self.set_size
 
-            state = SafeSet(self.config)
-            safe_set = state.get_current_safe_set()
+            safe_set = SafeSet.get_current_safe_set()
             #
             # Use initial safe point as seed
             if safe_set is None or len(safe_set) == 0:
                 safe_set = self.aquisition.data.train_x[-1:].to(gosafeopt.device)
             else:
                 # TODO: why is this needed? Should already be on correct device.
-                for i in range(len(state.safe_sets)):
-                    state.safe_sets[i] = state.safe_sets[i].to(gosafeopt.device)
-                safe_set = torch.vstack(safe_set.safe_sets) if mode == "safe_all" else state.get_current_safe_set()
+                for i in range(len(SafeSet.safe_sets)):
+                    SafeSet.safe_sets[i] = SafeSet.safe_sets[i].to(gosafeopt.device)
+                safe_set = torch.vstack(SafeSet.safe_sets) if mode == "safe_all" else SafeSet.get_current_safe_set()
 
             # Sample at most N points from Safeset
             if safe_set.shape[0] >= N:
@@ -150,7 +78,7 @@ class BaseOptimizer:
                     safe_set.mean(axis=0), 1e-3 * torch.eye(safe_set.shape[1], device=gosafeopt.device)
                 )
                 X = distribution.rsample([N])
-                X[:, -self.config["dim_context"] :] = self.context.repeat(N, 1)
+                X[:, -self.dim_context :] = self.context.repeat(N, 1)
                 X[: len(safe_set)] = safe_set
 
         else:
@@ -186,8 +114,9 @@ class BaseOptimizer:
         next_param = X[torch.argmax(reward)]
         reward = reward.max()
 
-        if self.config["set_init"] == "safe":
-            SafeSet(self.config).update_safe_set(X, self.aquisition)
+        # TODO: make this enum
+        if self.set_init == "safe":
+            SafeSet.update_safe_set(X, self.aquisition)
 
         if not self.aquisition.has_safe_points(X):
             Logger.warn("Could not find safe set")
