@@ -12,27 +12,25 @@ from torch.distributions import MultivariateNormal
 from typing import Tuple
 
 
-# TODO: self.i changing sets should should not be handled here
-@singleton
-class SafeSet(object):
-    def __init__(self, config: dict):
-        self.config = config
-        self.reset()
+class SafeSet:
+    current_safe_set = 0
+    best_sage_set = 0
+    y_min = -1e10
+    global_y_min = -1e10
+    i = 0
 
-    def reset(self):
-        self.safe_sets = []
-        self.current_safe_set = 0
-        self.best_sage_set = 0
-        self.y_min = -1e10
-        self.global_y_min = -1e10
-        self.i = 0
+    @classmethod
+    def configure(cls, config):
+        cls.config = config
 
+    @classmethod
     def get_current_safe_set(self) -> Optional[Tensor]:
         if len(self.safe_sets) == 0:
             return None
         else:
             return self.safe_sets[self.current_safe_set]
 
+    @classmethod
     def update_safe_set(self, X: Tensor, aquisition: BaseAquisition):
         new_safe_set = X[aquisition.safe_set(X)]  # New params considered safe
         safe_set = self.get_current_safe_set()
@@ -44,9 +42,11 @@ class SafeSet(object):
         else:
             self.add_new_safe_set(new_safe_set)
 
+    @classmethod
     def filter_safe_set(self, mask: Tensor):
         self.safe_sets[self.current_safe_set] = self.safe_sets[self.current_safe_set][mask]
 
+    @classmethod
     def add_to_current_safe_set(self, safeset: Tensor):
         safeset.to(gosafeopt.device)
         current_safe_set = self.get_current_safe_set()
@@ -55,21 +55,25 @@ class SafeSet(object):
         else:
             self.safe_sets[self.current_safe_set] = safeset
 
+    @classmethod
     def add_new_safe_set(self, safeset: Tensor):
         safeset.to(gosafeopt.device)
         self.safe_sets.append(safeset)
 
+    @classmethod
     def change_to_latest_safe_set(self):
         self.i = 0
         self.current_safe_set = len(self.safe_sets) - 1
         self.y_min = -1e10
         Logger.info(f"BestSet: {self.best_sage_set} / CurrentSet: {self.current_safe_set}")
 
+    @classmethod
     def change_to_best_safe_set(self):
         self.i = 0
         self.current_safe_set = self.best_sage_set
         Logger.info(f"Changing to best set Nr. {self.best_sage_set}")
 
+    @classmethod
     def calculate_current_set(self, yMin):
         if self.global_y_min < yMin:
             self.global_y_min = yMin

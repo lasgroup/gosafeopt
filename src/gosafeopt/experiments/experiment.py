@@ -8,9 +8,10 @@ from gymnasium.utils.save_video import save_video
 import gosafeopt
 from gosafeopt.aquisitions.go_safe_opt import OptimizationStep
 from gosafeopt.experiments.environment import Environment
-from gosafeopt.experiments.backup import Backup
+from gosafeopt.experiments.backup import BackupStrategy, GoSafeOptBackup
 from typing import Optional, Tuple
 from torch import Tensor
+from gosafeopt.tools.data import Data
 
 
 class Experiment:
@@ -18,10 +19,11 @@ class Experiment:
     Base class for experiments
     """
 
-    def __init__(self, config: dict, env: Environment, backup: Optional[Backup] = None):
+    def __init__(self, config: dict, env: Environment, data: Data, backup: Optional[BackupStrategy] = None):
         self.c = config
         self.env = env
         self.backup = backup
+        self.data = data
         self.render_list = []
 
     def rollout(self, param: Tensor, episode=0) -> Tuple[Tensor, Tensor, bool, dict]:
@@ -55,19 +57,9 @@ class Experiment:
             i += 1
 
         self.env.after_experiment()
+        if self.backup is not None:
+            self.backup.after_rollout(param, rewards)
         self.process_video(episode)
-
-        # TODO: refactor
-        if (
-            self.backup is not None
-            and self.backup.go_state.get_step() == OptimizationStep.GLOBAL
-            and not backup_triggered
-            and not np.any(rewards[1:] < 0)
-        ):
-            param.to(gosafeopt.device)
-            GoSafeOptState(self.c).go_to_local()
-            SafeSet(self.c).add_new_safe_set(param.reshape(1, -1))
-            SafeSet(self.c).change_to_latest_safe_set()
 
         rewards = rewards / len(trajectory)
         return torch.from_numpy(rewards), torch.tensor(trajectory), backup_triggered, info
@@ -86,7 +78,7 @@ class Experiment:
             if not self.backup.is_safe(observation):
                 param = self.backup.get_backup_policy(observation)
                 self.env.backup(param)
-                self.backup.add_fail(param, observation)
+                self.data.append_failed(param, torch.tensor(observation))
                 Logger.warn(f"Backup policy triggered at step {i} with policy {param}")
                 return True
 

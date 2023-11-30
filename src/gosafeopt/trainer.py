@@ -4,7 +4,6 @@ from rich.progress import track
 import torch
 
 from gosafeopt.optim import get_optimizer
-from gosafeopt.aquisitions import get_aquisition
 from gosafeopt.optim.base_optimizer import SafeSet
 from gosafeopt.tools.data import Data
 from botorch import fit_gpytorch_mll
@@ -17,11 +16,11 @@ import wandb
 
 
 class Trainer:
-    def __init__(self, config, context=None, state_dict=None, logger=None, data=None):
+    def __init__(self, config, aquisition, context=None, state_dict=None, logger=None, data=None):
         self.config = config
 
         self.logger = logger
-
+        self.aquisition = aquisition
         self.data = Data() if data is None else data
         self.context = context
         self.state_dict = state_dict
@@ -47,13 +46,11 @@ class Trainer:
                 reward, trajectory, backup_triggered, info = experiment.rollout(k, i)
                 self.data.append_data(k.reshape(1, -1), reward.reshape(1, -1))
                 gp = model(self.config, self.data, self.state_dict)
-                aquisition = get_aquisition(gp, self.config, self.context, self.data)
             else:
                 gp = model(self.config, self.data, self.state_dict)
-                aquisition = get_aquisition(gp, self.config, self.context, self.data)
 
-                aquisition.before_optimization()
-                optimizer = get_optimizer(aquisition, self.config, self.context)
+                self.aquisition.before_optimization()
+                optimizer = get_optimizer(self.aquisition, self.config, self.context)
 
                 if (self.config["refit_interval"] != 0 and i % self.config["refit_interval"] == 0) and (
                     safePoints is None or i >= safePoints.shape[0]
@@ -70,7 +67,7 @@ class Trainer:
 
                 reward, trajectory, backup_triggered, info = experiment.rollout(k, i)
 
-                aquisition.after_optimization()
+                self.aquisition.after_optimization()
                 if not backup_triggered:
                     self.data.append_data(k.reshape(1, -1), reward.reshape(1, -1))
 

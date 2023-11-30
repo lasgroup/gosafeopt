@@ -1,10 +1,10 @@
-from abc import ABC, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from typing import Optional
 from gymnasium import Env
 import torch
 
 
-class Environment(Env, ABC):
+class Environment(Env, metaclass=ABCMeta):
     def __init__(self, best_param: Optional[torch.Tensor], render_mode: Optional[str] = None):
         self.best_param = best_param
         self.render_mode = render_mode
@@ -15,9 +15,6 @@ class Environment(Env, ABC):
         This method will be called with the backup parameters of the backup strategy.
         This method should send the backup parameters to the robot/sim.
         """
-        pass
-
-    def reset(self):
         pass
 
     @abstractmethod

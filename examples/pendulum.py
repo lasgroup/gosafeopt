@@ -8,7 +8,7 @@ from gosafeopt.aquisitions.max_mean import MaxMean
 from gosafeopt.aquisitions.safe_opt_multistage import SafeOpt
 from gosafeopt.aquisitions.safe_ucb import SafeUCB
 from gosafeopt.aquisitions.safe_lcb import SafeLCB
-from gosafeopt.experiments.backup import Backup
+from gosafeopt.experiments.backup import GoSafeOptBackup
 from gosafeopt.experiments.experiment import Experiment
 from gosafeopt.models import create_model
 from gosafeopt.optim import get_optimizer
@@ -191,7 +191,7 @@ def train(
         random.seed(config["seed"])
 
         data = Data()
-        backup = Backup(config, data) if config["aquisition"] == "GoSafeOpt" else None
+        backup = GoSafeOptBackup(config, data) if config["aquisition"] == "GoSafeOpt" else None
 
         config_pendulum["m"] = context
         config_pendulum["kp"] *= context

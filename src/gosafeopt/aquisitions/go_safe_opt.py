@@ -15,63 +15,57 @@ class OptimizationStep(Enum):
     GLOBAL = 2
 
 
-@singleton
-class GoSafeOptState(object):
-    def __init__(self, config: dict):
-        self.config = config
-        self.n_max_local: int = config["n_max_local"]
-        self.n_max_global: int = config["n_max_global"]
-        self.n = 0
+class GoSafeOpt(SafeOpt):
+    def __init__(self, model, config: dict, data: Data, context: Optional[Tensor] = None):
+        super().__init__(model, config, context, data)
+        GoSafeOpt.n_max_local: int = config["n_max_local"]
+        GoSafeOpt.n_max_global: int = config["n_max_global"]
+        GoSafeOpt.n = 0
 
-    def go_to_local(self):
-        self.n = -1
+    @classmethod
+    def go_to_local_exploration(cls):
+        cls.n = -1
 
-    def advance(self):
-        self.n += 1
-        self.n %= self.n_max_local + self.n_max_global
-
-    def get_step(self):
-        if self.n < self.n_max_local:
+    @classmethod
+    def get_exploration_phase(cls):
+        if cls.n < cls.n_max_local:
             return OptimizationStep.LOCAL
-        elif self.n < self.n_max_global + self.n_max_local:
+        elif cls.n < cls.n_max_global + cls.n_max_local:
             return OptimizationStep.GLOBAL
 
-
-class GoSafeOpt(SafeOpt):
-    def __init__(self, model, config: dict, context: Optional[Tensor] = None, data: Optional[Data] = None):
-        super().__init__(model, config, context, data)
-
-        self.go_state = GoSafeOptState(config)
+    @classmethod
+    def advance(cls):
+        cls.n += 1
+        cls.n %= cls.n_max_local + cls.n_max_global
 
     @property
     def n_steps(self) -> int:
-        if self.go_state.get_step() == OptimizationStep.LOCAL:
+        if GoSafeOpt.get_exploration_phase() == OptimizationStep.LOCAL:
             return 3
         else:
             return 1
 
     def override_set_initialization(self) -> bool | str:
-        if self.go_state.get_step() == OptimizationStep.GLOBAL:
-            "random"
+        if GoSafeOpt.get_exploration_phase() == OptimizationStep.GLOBAL:
+            return "random"
         else:
             return super().override_set_initialization()
 
     def is_internal_step(self, step: int = 0):
-        if self.go_state.get_step() == OptimizationStep.LOCAL:
+        if GoSafeOpt.get_exploration_phase() == OptimizationStep.LOCAL:
             return super().is_internal_step(step)
         else:
             return False
 
     def evaluate(self, X: Tensor, step: int = 0) -> Tensor:
-        if self.go_state.get_step() == OptimizationStep.LOCAL:
+        if GoSafeOpt.get_exploration_phase() == OptimizationStep.LOCAL:
             return super().evaluate(X, step)
         else:
             return self.s3(X)
 
     def after_optimization(self):
-        self.go_state.advance()
+        GoSafeOpt.advance()
 
-    # TODO: No need to compute posterior
     def s3(self, X: Tensor):
         data = self.data.train_x
         if self.data.failed_k is not None:
