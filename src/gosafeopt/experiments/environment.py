@@ -1,8 +1,9 @@
-from abc import ABC, ABCMeta, abstractmethod
+from abc import ABCMeta, abstractmethod
 from typing import Optional
+
+import torch
 from gymnasium import Env
 from numpy.typing import NDArray
-import torch
 
 
 class Environment(Env, metaclass=ABCMeta):
@@ -12,25 +13,12 @@ class Environment(Env, metaclass=ABCMeta):
 
     @abstractmethod
     def backup(self, params: NDArray):
-        """
-        This method will be called with the backup parameters of the backup strategy.
-        This method should send the backup parameters to the robot/sim.
-        """
-        pass
+        """Execute backup strategy with backup parameters."""
 
     @abstractmethod
     def before_experiment(self, params: NDArray):
-        """
-        This method will be executed before each loss evaluation.
-        This method should be implemented to set the parameters that will be evaluated on the robot/sim.
-        I.e in hardware experiments this could also be used for waiting until the experiment is setup.
-        """
-        pass
+        """Execute before each loss evaluation."""
 
     @abstractmethod
     def after_experiment(self):
-        """
-        This method will be executed after each loss evaluation.
-        Useful i.e for setting the best found parameters so far to stabilize the robot.
-        """
-        pass
+        """Execute after each loss evaluation."""

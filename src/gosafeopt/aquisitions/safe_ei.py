@@ -1,33 +1,47 @@
-from gosafeopt.aquisitions.base_aquisition import BaseAquisition
-from scipy.stats import norm
+from typing import Optional
+
 import torch
+from scipy.stats import norm
+from torch import Tensor
+
+from gosafeopt.aquisitions.base_aquisition import BaseAquisition
+from gosafeopt.tools.data import Data
 
 
 class SafeEI(BaseAquisition):
-    def __init__(self, model, c, context=None, data=None):
-        super().__init__(model, c, context, data)
+    def __init__(
+        self,
+        dim_obs: int,
+        scale_beta: float,
+        beta: float,
+        data: Data,
+        context: Optional[Tensor] = None,
+    ):
+        super().__init__(dim_obs, scale_beta, beta, context)
+        self.data = data
 
-    def evaluate(self, X):
-        l, u = self.get_confidence_interval(X)
+    def evaluate(self, x: Tensor):
+        if self.data.train_x is None:
+            raise Exception("Training data is empty")
+
+        posterior = self.model_posterior(x)
+        l, _ = self.get_confidence_interval(posterior)  # noqa: E741
 
         xi = 0.01
 
-        mu = X.mean.reshape(-1, self.config["dim_obs"])[:, 0]
-        sigma = X.variance.reshape(-1, self.config["dim_obs"])[:, 0]
+        mu = posterior.mean.reshape(-1, self.dim_obs)[:, 0]
+        sigma = posterior.variance.reshape(-1, self.dim_obs)[:, 0]
 
-        mean_sample = self.model.posterior(self.data.train_x).mean.detach()[:, 0]
+        mean_sample = self.model_posterior(self.data.train_x).mean.detach()[:, 0]
         mu_sample_opt = torch.max(mean_sample)
 
         imp = mu - mu_sample_opt - xi
-        Z = (imp / sigma).detach().numpy()
-        ei = imp * norm.cdf(Z) + sigma * norm.pdf(Z)
+        z = (imp / sigma).detach().numpy()
+        ei = imp * norm.cdf(z) + sigma * norm.pdf(z)
         ei[sigma == 0.0] = 0.0
 
         slack = l - self.fmin
 
-        if self.config["use_soft_penalties"]:
-            ei += self.soft_penalty(slack)
-        else:
-            ei[:] = torch.all(l[:, 1:] > self.fmin[1:], axis=1)
-            ei[~S] = -1e10
+        ei += self.soft_penalty(slack)
+
         return ei

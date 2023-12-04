@@ -1,17 +1,17 @@
-from botorch.models import ModelListGP
-import torch
+from typing import Optional
 
-from botorch.models.gp_regression import ScaleKernel, SingleTaskGP
-from gpytorch.means import ConstantMean, ZeroMean, zero_mean
-import torch
 import gpytorch
-from botorch.models.transforms.outcome import Standardize
+import torch
+from botorch.models import ModelListGP
+from botorch.models.gp_regression import SingleTaskGP
 from botorch.models.transforms.input import Normalize
-from typing import List, Optional
+from botorch.models.transforms.outcome import Standardize
+from gpytorch.kernels import ScaleKernel
+from gpytorch.means import ConstantMean
 from torch import Tensor
-from gosafeopt.tools.data import Data
 
 import gosafeopt
+from gosafeopt.tools.data import Data
 
 
 class ModelGenerator:
@@ -40,12 +40,14 @@ class ModelGenerator:
         self.lengthscale = lenghtscale
         self.state_dict = state_dict
 
-    def generate(self, data) -> ModelListGP:
-        input_transform = (
-            Normalize(self.dim_input, bounds=torch.vstack([self.domain_start, self.domain_end]))
-            if self.normalize_input
-            else None
-        )
+    def generate(self, data: Data) -> ModelListGP:
+        if data.train_x is None or data.train_y is None:
+            raise Exception("Data can not be emtpy")
+
+        if self.normalize_input and self.domain_start is not None and self.domain_end is not None:
+            input_transform = Normalize(self.dim_input, bounds=torch.vstack([self.domain_start, self.domain_end]))
+        else:
+            input_transform = None
 
         models = []
 
@@ -58,17 +60,17 @@ class ModelGenerator:
             likelihood.to(gosafeopt.device)
 
             # TODO: how to update outcome_transform with condition on observation
-            # if normalize_output:
-            #     outcome_transform = Standardize(m=1)
-            #     outcome_transform.train()
-            #     outcome_transform(self.data.train_y[:, i].reshape(-1, 1))[0]
-            #     outcome_transform.eval()
-            #     mean_module.constant.requires_grad_(False)
-            #     if i > 0:
-            #         mean_module.constant = outcome_transform(torch.zeros(1, 1))[0]
-            #     else:
-            #         mean_module.constant = outcome_transform.means[0]
-            #
+            if self.normalize_output:
+                outcome_transform = Standardize(m=1)
+                outcome_transform.train()
+                outcome_transform(data.train_y[:, i].reshape(-1, 1))[0]
+                outcome_transform.eval()
+                mean_module.constant.requires_grad_(False)
+                if i > 0:
+                    mean_module.constant = outcome_transform(torch.zeros(1, 1))[0]
+                else:
+                    mean_module.constant = outcome_transform.means[0]
+
             covar_module = ScaleKernel(gpytorch.kernels.MaternKernel(ard_num_dims=self.dim_input))
             covar_module.base_kernel.lengthscale = torch.tensor(self.lengthscale)
 
@@ -76,11 +78,11 @@ class ModelGenerator:
                 SingleTaskGP(
                     data.train_x,
                     data.train_y[:, i].reshape(-1, 1),
-                    likelihood,
-                    covar_module,
-                    mean_module,
-                    outcome_transform,
-                    input_transform,
+                    likelihood=likelihood,
+                    covar_module=covar_module,
+                    mean_module=mean_module,
+                    outcome_transform=outcome_transform,
+                    input_transform=input_transform,
                 ).to(gosafeopt.device)
             )
 

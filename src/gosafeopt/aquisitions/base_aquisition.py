@@ -1,17 +1,14 @@
-from abc import abstractmethod
+from abc import ABC, abstractmethod
+from typing import Optional, Tuple
+
+import gpytorch
+import torch
 from botorch.acquisition.proximal import ModelListGP
 from botorch.models.pairwise_gp import GPyTorchPosterior
-from botorch.posteriors.transformed import Posterior
-from joblib.externals.loky import backend
-import torch
-from botorch.acquisition import AnalyticAcquisitionFunction
-import gpytorch
 from torch import Tensor
-from typing import Optional, Tuple
-from gosafeopt.tools.data import Data
 
-from abc import ABC, abstractmethod
 import gosafeopt
+from gosafeopt.tools.data import Data
 
 
 class BaseAquisition(ABC):
@@ -36,62 +33,57 @@ class BaseAquisition(ABC):
     def update_model(self, model: ModelListGP):
         self.model = model
 
-    def model_posterior(self, X: Tensor) -> GPyTorchPosterior:
+    def model_posterior(self, x: Tensor) -> GPyTorchPosterior:
         if self.model is not None:
-            with torch.no_grad(), gpytorch.settings.fast_pred_var():
-                with gpytorch.settings.fast_pred_samples():
-                    x = self.model.posterior(X)
-                    return x
+            self.model.eval()
+            with torch.no_grad(), gpytorch.settings.fast_pred_var(), gpytorch.settings.fast_pred_samples():
+                posterior = self.model.posterior(x)
+                return posterior  # type: ignore
         else:
             raise Exception("Model is not initialized")
 
     @abstractmethod
-    def evaluate(self, X: Tensor, step: int = 0) -> Tensor:
+    def evaluate(self, x: Tensor, step: int = 0) -> Tensor:
         pass
 
-    def after_optimization(self):
+    def after_optimization(self) -> None:  # noqa: B027
         pass
 
-    def before_optimization(self):
+    def before_optimization(self) -> None:  # noqa: B027
         pass
 
     def override_set_initialization(self) -> bool | str:
-        """With this method an aquisition function can override the set initialization"""
+        """With this method an aquisition function can override the set initialization."""
         return False
 
     def is_internal_step(self, step: int = 0):
-        """Should return if the result of the aquisition step should be appended to the possible maximizers.
-        Useful i.e for calculating global lower bounds as a step of an aquisition.
-        """
+        """Return if the result of the aquisition step should be appended to the possible maximizers."""
+
         if step == 0:
             return True
         else:
             raise NotImplementedError
-
-    def eval(self):
-        """Put model in fast evaluation mode."""
-        self.model.eval()
 
     def get_confidence_interval(self, posterior: GPyTorchPosterior) -> Tuple[Tensor, Tensor]:
         mean = posterior.mean.reshape(-1, self.dim_obs)
         var = posterior.variance.reshape(-1, self.dim_obs)
 
         # Upper and lower confidence bound
-        l = mean - self.scale_beta * torch.sqrt(self.beta * var)
+        l = mean - self.scale_beta * torch.sqrt(self.beta * var)  # noqa: E741
         u = mean + self.scale_beta * torch.sqrt(self.beta * var)
 
         return l, u
 
-    def safe_set(self, X: Tensor) -> Tensor:
-        posterior = self.model_posterior(X)
+    def safe_set(self, x: Tensor) -> Tensor:
+        posterior = self.model_posterior(x)
 
-        l, _ = self.get_confidence_interval(posterior)
+        l, _ = self.get_confidence_interval(posterior)  # noqa: E741
 
-        S = torch.all(l[:, 1:] > self.fmin[1:], axis=1)
-        return S
+        safe_set = torch.all(l[:, 1:] > self.fmin[1:], axis=1)  # type: ignore
+        return safe_set
 
-    def has_safe_points(self, X: Tensor) -> Tensor:
-        return torch.any(self.safe_set(X))
+    def has_safe_points(self, x: Tensor) -> Tensor:
+        return torch.any(self.safe_set(x))
 
     def soft_penalty(self, slack: Tensor) -> Tensor:
         penalties = torch.clip(slack, None, 0)
@@ -102,5 +94,4 @@ class BaseAquisition(ABC):
 
         slack_id = slack < -1
         penalties[slack_id] = -300 * penalties[slack_id] ** 2
-        # penalties *= 10000
-        return torch.sum(penalties[:, 1:], axis=1)
+        return torch.sum(penalties[:, 1:], axis=1)  # type: ignore

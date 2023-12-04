@@ -150,7 +150,7 @@ def train(
 
         config["context"] = context
 
-        Logger.setVerbosity(4)
+        Logger.set_verbosity(4)
         Logger.info("Using: {} with device {}".format(config["aquisition"], gosafeopt.device))
 
         if beta is not None:
@@ -237,8 +237,8 @@ def train(
 
         logger.save("{}/res/datalogger.obj".format(wandb.run.dir))
         # ml(config_path=config_path, data_path="{}/res".format(wandb.run.dir))
-        wandb.summary["rewardMax"] = trainer.rewardMax
-        wandb.summary["bestK"] = trainer.bestK
+        wandb.summary["rewardMax"] = trainer.reward_max
+        wandb.summary["bestK"] = trainer.best_k
         logger.finish()
 
 

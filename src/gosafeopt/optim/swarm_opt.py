@@ -2,7 +2,6 @@ import copy
 import math
 from typing import Optional
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch import Tensor
@@ -10,6 +9,7 @@ from torch import Tensor
 import gosafeopt
 from gosafeopt.aquisitions.base_aquisition import BaseAquisition
 from gosafeopt.optim.base_optimizer import BaseOptimizer
+from gosafeopt.tools.data import Data
 from gosafeopt.tools.math import clamp2dTensor
 from gosafeopt.tools.rand import rand2n_torch
 
@@ -31,6 +31,7 @@ class SwarmOpt(BaseOptimizer):
         set_init: str,
         n_restarts: int,
         n_iterations: int,
+        data: Data,
         context: Optional[Tensor] = None,
     ):
         super().__init__(
@@ -43,6 +44,7 @@ class SwarmOpt(BaseOptimizer):
             dim_params,
             dim_context,
             set_init,
+            data,
             context,
         )
         self.n_restarts = n_restarts
@@ -51,7 +53,7 @@ class SwarmOpt(BaseOptimizer):
         self.g = g
         self.w = w
 
-        def is_square(n):
+        def is_square(n: int) -> bool:
             root = math.isqrt(n)
             return n == root * root
 
@@ -62,14 +64,16 @@ class SwarmOpt(BaseOptimizer):
     def optimize(self, step: int = 0):
         i = 0
         # N Restarts if no safe set is found
-        while i == 0 or (i < self.n_restarts and not self.aquisition.has_safe_points(x)):
+        x = None
+        res = None
+        while i == 0 or (i < self.n_restarts and x is not None and not self.aquisition.has_safe_points(x)):
             x = self.get_initial_params(self.set_init)
             p = copy.deepcopy(x)
 
             res = self.aquisition.evaluate(x, step)
 
-            fBest = res.max()
-            pBest = x[torch.argmax(res)]
+            f_best = res.max()
+            p_best = x[torch.argmax(res)]
 
             v = (
                 rand2n_torch(
@@ -99,7 +103,7 @@ class SwarmOpt(BaseOptimizer):
                     x.shape[0],
                     dim,
                 ).to(gosafeopt.device)
-                v = inertia_scale * v + self.p * r_p * (p - x) + self.g * r_g * (pBest - x)
+                v = inertia_scale * v + self.p * r_p * (p - x) + self.g * r_g * (p_best - x)
                 inertia_scale *= 0.95
 
                 # Update swarm position
@@ -114,15 +118,15 @@ class SwarmOpt(BaseOptimizer):
                 x += v
                 x = clamp2dTensor(x, self.domain_start, self.domain_end)
 
-                resTmp = self.aquisition.evaluate(x, step)
+                res_tmp = self.aquisition.evaluate(x, step)
 
-                mask = resTmp > res
+                mask = res_tmp > res
                 p[mask] = x[mask]
-                res[mask] = resTmp[mask]
+                res[mask] = res_tmp[mask]
 
-                if res.max() > fBest:
-                    fBest = res.max()
-                    pBest = x[torch.argmax(res)]
+                if res.max() > f_best:
+                    f_best = res.max()
+                    p_best = x[torch.argmax(res)]
 
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()

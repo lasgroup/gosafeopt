@@ -1,11 +1,12 @@
-from botorch.models.pairwise_gp import GPyTorchPosterior
+from typing import Optional
+
 import torch
+from botorch.models.pairwise_gp import GPyTorchPosterior
+from torch import Tensor
+from torch.distributions.multivariate_normal import MultivariateNormal
+
 import gosafeopt
 from gosafeopt.aquisitions.base_aquisition import BaseAquisition
-from torch.distributions.multivariate_normal import MultivariateNormal
-from gosafeopt.tools.data import Data
-from typing import Optional
-from torch import Tensor
 
 
 class SafeOpt(BaseAquisition):
@@ -17,19 +18,18 @@ class SafeOpt(BaseAquisition):
         scale_beta: float,
         beta: float,
         context: Optional[Tensor] = None,
-        data: Optional[Data] = None,
     ):
-        super().__init__(dim_obs, scale_beta, beta, context=context, data=data, n_steps=3)
+        super().__init__(dim_obs, scale_beta, beta, context=context, n_steps=3)
 
-    def evaluate(self, X: Tensor, step: int = 0) -> Tensor:
-        posterior = self.model_posterior(X)
+    def evaluate(self, x: Tensor, step: int = 0) -> Tensor:
+        posterior = self.model_posterior(x)
         match step:
             case 0:
-                return self.lower_bound(posterior)
+                return self.lower_bound(posterior)  # type: ignore
             case 1:
-                return self.maximizers(posterior)
+                return self.maximizers(posterior)  # type: ignore
             case 2:
-                return self.expanders(posterior)
+                return self.expanders(posterior)  # type: ignore
             case _:
                 raise NotImplementedError
 
@@ -38,21 +38,21 @@ class SafeOpt(BaseAquisition):
         return super().override_set_initialization()
 
     def is_internal_step(self, step: int = 0):
-        return True if step == 0 else False
+        return step == 0
 
-    def lower_bound(self, X: GPyTorchPosterior) -> Tensor:
-        l, _ = self.get_confidence_interval(X)
+    def lower_bound(self, x: GPyTorchPosterior) -> Tensor:
+        l, _ = self.get_confidence_interval(x)  # noqa: E741
 
-        maxLCB = torch.max(l[:, 0])
-        if maxLCB > SafeOpt.best_lcb:
-            SafeOpt.best_lcb = maxLCB
+        max_lcb = torch.max(l[:, 0])
+        if max_lcb > SafeOpt.best_lcb:
+            SafeOpt.best_lcb = max_lcb
 
         slack = l - self.fmin
 
         return l[:, 0] + self.soft_penalty(slack)
 
-    def maximizers(self, X: GPyTorchPosterior) -> Tensor:
-        l, u = self.get_confidence_interval(X)
+    def maximizers(self, x: GPyTorchPosterior) -> Tensor:
+        l, u = self.get_confidence_interval(x)  # noqa: E741
         scale = 1  # if not self.c["normalize_output"] else self.model.models[0].outcome_transform._stdvs_sq[0]
         values = (u - l)[:, 0] / scale
         improvement = u[:, 0] - SafeOpt.best_lcb
@@ -70,8 +70,8 @@ class SafeOpt(BaseAquisition):
 
         return value
 
-    def expanders(self, X: GPyTorchPosterior) -> Tensor:
-        l, u = self.get_confidence_interval(X)
+    def expanders(self, x: GPyTorchPosterior) -> Tensor:
+        l, u = self.get_confidence_interval(x)  # noqa: E741
 
         scale = 1  # if not self.c["normalize_output"] else self.model.models[0].outcome_transform._stdvs_sq[0]
         values = (u - l)[:, 0] / scale
@@ -79,7 +79,7 @@ class SafeOpt(BaseAquisition):
         slack = l - self.fmin
         penalties = self.soft_penalty(slack)
 
-        # TODO how to set scale?
+        # TODO: how to set scale?
         normal = MultivariateNormal(
             loc=torch.zeros_like(slack[:, 1:], device=gosafeopt.device),
             covariance_matrix=torch.eye(slack.shape[1] - 1, device=gosafeopt.device),

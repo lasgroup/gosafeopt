@@ -1,21 +1,20 @@
+from typing import Optional
+
+import numpy as np
+import torch
+from botorch import fit_gpytorch_mll
 from botorch.models import ModelListGP
 from gpytorch.mlls import ExactMarginalLogLikelihood
-import numpy as np
 from rich.progress import track
-import torch
+from torch import Tensor
+
 from gosafeopt.aquisitions.base_aquisition import BaseAquisition
 from gosafeopt.experiments.experiment import Experiment
-
+from gosafeopt.models.model import ModelGenerator
 from gosafeopt.optim.base_optimizer import BaseOptimizer, SafeSet
 from gosafeopt.tools.data import Data
-from botorch import fit_gpytorch_mll
-from gosafeopt.tools.file import createFolderINE
-from gosafeopt.models.model import ModelGenerator
-from gosafeopt.tools.logger import Logger
-from torch import Tensor
-from typing import Optional
 from gosafeopt.tools.data_logger import WandbLogger
-import wandb
+from gosafeopt.tools.logger import Logger
 
 
 class Trainer:
@@ -41,86 +40,72 @@ class Trainer:
         self.logger = logger
         self.data = Data() if data is None else data
         self.context = context
-        self.rewardMax = -1e10 * np.ones(self.dim_obs)  # Something small
-        self.bestK = None
-
-        # Create data folders if not present
-        createFolderINE("{}/res".format(wandb.run.dir))
-        createFolderINE("{}/video".format(wandb.run.dir))
-        createFolderINE("{}/plot".format(wandb.run.dir))
+        self.reward_max = -1e10 * torch.ones(self.dim_obs)  # Something small
+        self.best_k = None
 
     # TODO: make parameters explicit instead of config
     def train(
         self,
         experiment: Experiment,
-        model: ModelGenerator,
+        model_generator: ModelGenerator,
         optimizer: BaseOptimizer,
         aquisition: BaseAquisition,
-        safePoints: torch.Tensor,
+        safe_points: torch.Tensor,
     ):
-        k = np.zeros(self.dim_params)
+        param = np.zeros(self.dim_params)
 
-        forExpression = (
-            track(range(0, self.n_opt_samples), description="Training...")
+        for_expression = (
+            track(range(self.n_opt_samples), description="Training...")
             if self.show_progress
-            else range(0, self.n_opt_samples)
+            else range(self.n_opt_samples)
         )
 
-        for episode in forExpression:
+        model = None
+
+        for episode in for_expression:
             # Collect data from known safe points
-            if safePoints is not None and episode < safePoints.shape[0]:
-                [k, acf_val] = [safePoints[episode], torch.tensor([0])]
-                reward, trajectory, backup_triggered, info = experiment.rollout(k, episode)
-                self.data.append_data(k.reshape(1, -1), reward.reshape(1, -1))
+            if safe_points is not None and episode < safe_points.shape[0]:
+                [param, acf_val] = [safe_points[episode], torch.tensor([0])]
+                reward, trajectory, backup_triggered, info = experiment.rollout(param, episode)
+                self.data.append_data(param.reshape(1, -1), reward.reshape(1, -1))
             # Optimization loop
             else:
-                if episode == safePoints.shape[0]:
-                    # TODO: this is not so nice...
-                    model = model.generate(self.data)  # We need a generator since we have no data previously...
+                # For now we generate new model since condition_on_observations has a problem with input transforms...
+                model = model_generator.generate(self.data)
 
                 aquisition.update_model(model)
                 aquisition.before_optimization()
                 self.refit_reward_model(model, episode)
 
-                k, acf_val = optimizer.next_params()
-                Logger.info("{}/{} next k: {}".format(episode, self.n_opt_samples, k))
+                param, acf_val = optimizer.next_params()
+                Logger.info(f"{episode}/{self.n_opt_samples} next k: {param}")
 
-                reward, trajectory, backup_triggered, info = experiment.rollout(k, episode)
+                reward, trajectory, backup_triggered, info = experiment.rollout(param, episode)
 
                 aquisition.after_optimization()
 
                 if not backup_triggered:
-                    self.data.append_data(k.reshape(1, -1), reward.reshape(1, -1))
-                    model = model.condition_on_observations(
-                        [k.reshape(1, 1, -1), k.reshape(1, 1, -1)], reward.reshape(1, 1, -1)
-                    )
+                    self.data.append_data(param.reshape(1, -1), reward.reshape(1, -1))
 
             if torch.any(reward[1:] < 0):
-                Logger.warn("Constraint violated at iteration {} with {} at {}".format(episode, reward, k))
+                Logger.warn(f"Constraint violated at iteration {episode} with {reward} at {param}")
 
             if not backup_triggered:
-                if reward[0] > self.rewardMax[0]:
-                    self.rewardMax = reward
-                    self.bestK = k
-                    experiment.env.best_param = k
-                    Logger.success("New minimum at Iteration: {},yMin:{} at {}".format(episode, self.rewardMax, k))
+                if reward[0] > self.reward_max[0]:
+                    self.reward_max = reward
+                    self.best_k = param
+                    experiment.env.best_param = param
+                    Logger.success(f"New minimum at Iteration: {episode},yMin:{self.reward_max} at {param}")
                 else:
-                    Logger.info("Reward at Iteration: {},y:{} at {}".format(episode, reward, k))
+                    Logger.info(f"Reward at Iteration: {episode},y:{reward} at {param}")
 
                 SafeSet.calculate_current_set(reward[0])
 
                 if experiment.backup is not None:
-                    self.data.append_backup(trajectory, reward, k)
+                    self.data.append_backup(trajectory, reward, param)
 
             if self.logger is not None:
-                self.logger.log(
-                    model, trajectory, k, reward, self.data, self.rewardMax, acf_val, backup_triggered, episode, info
-                )
-
-            # Save progress
-            if (episode > 0 and not episode % self.save_interval) or episode == self.n_opt_samples - 1:
-                self.data.save("{}/res".format(wandb.run.dir))
-                torch.save(model.state_dict(), "{}/res/model.pth".format(wandb.run.dir))
+                self.logger.log(param, reward, self.reward_max, acf_val, backup_triggered, self.data, info, episode)
 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
