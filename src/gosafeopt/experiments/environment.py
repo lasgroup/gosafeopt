@@ -11,14 +11,11 @@ class Environment(Env, metaclass=ABCMeta):
         self.best_param = best_param
         self.render_mode = render_mode
 
-    @abstractmethod
     def backup(self, params: NDArray):
         """Execute backup strategy with backup parameters."""
 
-    @abstractmethod
     def before_experiment(self, params: NDArray):
         """Execute before each loss evaluation."""
 
-    @abstractmethod
     def after_experiment(self):
         """Execute after each loss evaluation."""

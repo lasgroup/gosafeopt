@@ -15,7 +15,8 @@ from gosafeopt.tools.logger import Logger
 class Experiment:
     """Base class for experiments."""
 
-    def __init__(self, config: dict, env: Environment, data: Data, backup: Optional[BackupStrategy] = None):
+    # TODO: config should not be dict
+    def __init__(self, config: dict, env: Environment, data: Data = None, backup: Optional[BackupStrategy] = None):
         self.c = config
         self.env = env
         self.backup = backup

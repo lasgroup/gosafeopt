@@ -1,85 +1,59 @@
 {
-    "optimization": {
-        "seed": 43,
-        "plot_folder": "./data/plot",
-        "save_interval": 200,
-        "comment": "Number of Bayesian Optimization steps",
-        "n_opt_samples": 5,
-        "comment": "Number of experiment rollout steps",
-        "n_rollout" : 100,
-        "refit_interval": 0,
-        "comment": "Dimension of parameters",
-        "dim_obs": 2,
-        "dim_context": 1,
-        "dim_params": 2,
-        "dim": 3,
-        "dim_state": 2,
-        "n_average": 1,
-        "use_setup_experiment": false,
-        "skip_initial_setup": true,
-        "log_video": false,
-        "log_plots": false,
-        "comment": "Aquisition must be one of [UCB, SafeUCB, SafeOpt, MaxMean, GoSafeOpt, SafeOptMultiStage]",
-        "aquisition": "SafeOptMultiStage",
-        "comment": "Domain bounds for Bayesian optimization with context",
-        "domain_start": [
-            -5,
-            -5,
-            0
-        ],
-        "domain_end": [
-            5,
-            5,
-            5
-        ],
-        "comment": "Prior for the lenght scale of the Matern kernel",
-        "init_lenghtscale": [
-            0.01,
-            0.01,
-            1.0
-        ],
-        "comment": "Needed for backup strategy",
-        "state_lenghtscale": 1,
-        "data_dir" : "data",
-        "wandbdir" : "./wandb",
-        "comment": "Min variance for safeopt/gosafeopt",
-        "min_var": 0.0001,
-        "comment": "Variance of likelihood",
-        "init_variance": 0.0001,
-        "comment": "Scale factor for beta",
-        "scale_beta": 1,
-        "comment": "beta for confidence bound",
-        "beta": 6,
-        "comment": "Size of the subset is ucb_set_n**2 if ucb_use_set is true",
-        "set_size": 5000,
-        "comment": " Initialization of grid [random, uniform, safe]",
-        "set_init": "random",
-        "comment": "Aquisition optimizer [scipy, swarm , grid]",
-        "acf_optim": "swarm",
-        "comment": "Iterations for swarmopt",
-        "swarmopt_n_restarts": 10,
-        "comment": "Restarts for swarmopt",
-        "swarmopt_n_iterations": 50,
-        "comment": "Swarmopt cognitive and social coefficient",
-        "swarmopt_p": 1,
-        "swarmopt_g": 1,
-        "swarmopt_w": 0.9,
-        "use_soft_penalties": true,
-        "safe_opt_interior_lb": 1,
-        "safe_opt_marginal_lb": 0.5,
-        "safe_opt_interior_prop": 0.1,
-        "safe_opt_marginal_prob": 0.8,
-        "safe_opt_sigma": 3,
-        "safe_opt_max_tries_without_progress": 5,
-        "safe_opt_max_tries_without_progress_tolerance": 0.9,
-        "safeopt_first_s3": 50,
-        "max_s1": 10,
-        "max_s3": 5,
-        "show_progress": true,
-        "use_ucb": false,
-        "comment": "Normalize Data",
-        "normalize_input": true,
-        "normalize_output": false,
-        "plotting_n_samples": 50
-    }
+  "log_video": false,
+  "log_plots": false,
+
+  "seed": 42,
+
+  "domain_start": [-5, -5, 0],
+  "domain_end": [5, 5, 5],
+  "dim_obs": 2,
+  "dim_params": 2,
+  "dim_context": 1,
+  "dim_model": 3,
+
+  "Trainer": {
+    "n_opt_samples": 50,
+    "refit_interval": 0,
+    "show_progress": false
+  },
+
+  "Optimization": {
+    "set_size": 500,
+    "p": 1,
+    "g": 1,
+    "w": 0.9,
+    "n_restarts": 3,
+    "set_init": "safe",
+    "max_global_steps_without_progress_tolerance": 0.9,
+    "max_global_steps_without_progress": 3,
+    "n_iterations": 100
+  },
+
+  "GoSafeOpt": {
+    "scale_beta": 1.0,
+    "beta": 9,
+    "n_max_local": 5,
+    "n_max_global": 3
+  },
+
+  "model": {
+    "lenghtscale": [0.1, 0.1, 1.0],
+    "normalize_input": true,
+    "normalize_output": true,
+    "likelihood_noise": 0.01
+  },
+
+  "wandb": {
+    "project": "bayopt-hw",
+    "directory": "~/.wandb",
+    "save_interval": 1
+  },
+
+  "GoSafeOptBackupStrategy": {
+    "interior_lb": 1,
+    "marginal_lb": 0.5,
+    "interior_prob": 0.8,
+    "marginal_prob": 0.95,
+    "std": 3
+  }
 }

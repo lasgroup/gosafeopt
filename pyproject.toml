@@ -1,31 +1,43 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-packages = ["gosafeopt"]
-build-backend = "setuptools.build_meta"
-requires-python = ">=3.10.0,<3.12.0"    #Because of pytorch
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
-[project]
+[tool.poetry]
 name = "gosafeopt"
 version = "0.1.0"
-description = "Safe Bayesian Optimisation"
-dependencies = [
-  "torch==2.1.*",
-  "numpy==1.26.*",
-  "typer==0.9.*",
-  "rich==13.7.*",
-  "gpytorch==1.11.*",
-  "botorch==0.9.*",
-  "gymnasium==0.29.*",
-  "wandb==0.16.*",
-]
-[project.optional-dependencies]
-development = ["ruff-lsp", "hatch"]
-examples = [
-  "seaborn==0.13",
-  "gymnasium[classic-control]",
-  "moviepy==1.0",
-  "plotly==5.18",
-]
+description = "Bayesion Optimization library focused on contextual GoSafeOpt"
+authors = ["Daniel Widmer <widmdani@ethz.ch>"]
+packages = [{include = "gosafeopt", from = "src"}]
+license = "GNU GPLv3"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">3.9, < 3.12" #torch not available for 3.12 as of now
+numpy = "^1.26.2"
+torch = "^2.1.1"
+typer = "^0.9.0"
+rich = "^13.7.0"
+gpytorch = "^1.11"
+botorch = "^0.9.4"
+gymnasium = "^0.29.1"
+wandb = "^0.16.1"
+
+[tool.poetry.group.examples]
+optional = true
+[tool.poetry.group.examples.dependencies]
+seaborn = "^0.13.0"
+gymnasium = {extras = ["classic-control"], version = "^0.29.1"}
+moviepy = "^1.0.3"
+plotly = "^5.18.0"
+ruff-lsp = "^0.0.45"
+pandas = "^2.1.3"
+
+[tool.poetry.group.develop]
+optional = true
+[tool.poetry.group.develop.dependencies]
+ruff-lsp = "^0.0.45"
+pyright = "^1.1.339"
+ruff = "^0.1.7"
 
 [tool.ruff]
 line-length = 120
@@ -83,3 +95,4 @@ ignore = [
 ]
 
 unfixable = ["B"]
+
