@@ -1,20 +1,27 @@
+from typing import Optional
+
+from torch import Tensor
+
 from gosafeopt.aquisitions.base_aquisition import BaseAquisition
-import torch
 
 
 class SafeUCB(BaseAquisition):
-    def __init__(self, model, c, context = None, data=None):
-        super().__init__(model, c, context, data)
+    def __init__(
+        self,
+        dim_obs: int,
+        scale_beta: float,
+        beta: float,
+        context: Optional[Tensor] = None,
+    ):
+        super().__init__(dim_obs, scale_beta, beta, context)
 
-    def evaluate(self, X):
-        l, u = self.getBounds(X)
+    def evaluate(self, x: Tensor):
+        posterior = self.model_posterior(x)
+        l, u = self.get_confidence_interval(posterior)  # noqa: E741
         values = u[:, 0]
 
         slack = l - self.fmin
 
-        if self.c["use_soft_penalties"]:
-            values += self.penalties(slack)
-        else:
-            S[:] = torch.all(l[:, 1:] > self.fmin[1:], axis=1)
-            values[~S] = -1e10
+        values += self.soft_penalty(slack)
+
         return values

@@ -9,6 +9,10 @@ All relevant code for the paper is in `gosafeopt/aquisitions/*`, `gosafeopt/mode
 ## Setup
 
 ```
+#With poetry
+poetry install
+
+#With pip/venv
 python -m venv .venv
 . .venv/bin/activate
 pip install -e .
@@ -21,13 +25,6 @@ It might be necessary to create a wandb account at wandb.ai if not already exist
 To train the pendulum toy problem model with a specific aquisition function and show the result plot run
 
 ```
-cd examples
-python pendulum.py train --aquisition GoSafeOpt --seed 42
-python pendulum.py plot --data-path wandb/wandb/{RUN_NAME}/files/res
+poetry install --with examples
+python examples/pendulum.py
 ```
-
-The aquisition function can be one of `GoSafeOpt, SafeOptMultiStage, SafeUCB, SafeEI, UCB`.
-
-## Settings
-
-Most settings can be changed in `config.txt`

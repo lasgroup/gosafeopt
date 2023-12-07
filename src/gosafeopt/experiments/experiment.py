@@ -1,126 +1,107 @@
-from logging import warn
-import torch
-from gosafeopt.aquisitions.go_safe_opt import GoSafeOpt, GoSafeOptState
-from gosafeopt.optim.base_optimizer import OptimizerState
-from gosafeopt.tools.logger import Logger
+from typing import Optional, Tuple
+
 import numpy as np
+import torch
 from gymnasium.utils.save_video import save_video
-import wandb
-import gc
-import gosafeopt
-import sys
-import os
-import fcntl
-import time
+from numpy.typing import NDArray
+from torch import Tensor
+
+from gosafeopt.experiments.backup import BackupStrategy
+from gosafeopt.experiments.environment import Environment
+from gosafeopt.tools.data import Data
+from gosafeopt.tools.logger import Logger
 
 
 class Experiment:
-    """
-    Base class for experiments
-    """
+    """Base class for experiments."""
 
-    def __init__(self, config, env, backup=None):
+    # TODO: config should not be dict
+    def __init__(self, config: dict, env: Environment, data: Data = None, backup: Optional[BackupStrategy] = None):
         self.c = config
         self.env = env
         self.backup = backup
-        self.first_setup_done = False
+        self.data = data
+        self.render_list = []
 
-
-    def rollout(self, k, episode=0, ignore_backup=False):
-
-        rewards = torch.zeros(self.c["dim_obs"])
-
-        M = self.c["n_average"]
-        N = self.c["n_rollout"]
+    def rollout(self, param: Tensor, episode: int = 0) -> Tuple[Tensor, Tensor, bool, dict]:
+        np_param = param.numpy()
+        initial_state, info = self.reset()
+        trajectory = [initial_state]
+        rewards: NDArray = np.zeros(self.c["dim_obs"])
+        done = False
         backup_triggered = False
 
-        info = None
-
-        renderList = []
-
-        for j in range(M):
-            initial_state, _ = self.env.reset()
-
-            if self.backup is not None:
-                self.backup.reset()
-
-            if self.c["use_setup_experiment"] or (not self.first_setup_done and not self.c["skip_initial_setup"]): 
-                input("Press Enter after setting up envionment")
-                self.first_setup_done = True
-
-            trajectory = torch.zeros(N, self.c["dim_state"])
-            trajectory[0, :] = torch.from_numpy(initial_state)
-
-            warning = True
-
-            self.env.startExperiment(k)
-            for i in range(1, N):
-                reward, observation, stepinfo = self.step(k)
-
-                if info is None and stepinfo is not None:
-                    info = stepinfo
-                elif stepinfo is not None and info is not None and info is not False:
-                    for key, value in stepinfo.items():
-                        info[key] += value
-
-                trajectory[i, :] = torch.from_numpy(observation)
-                if rewards.shape[0] == reward.shape[0]:
-                    rewards += torch.from_numpy(reward)
-                elif warning:
-                    Logger.warn("Ignoring rewards")
-                    warning = False
-
-                if self.backup is not None and not ignore_backup and not backup_triggered:
-                    if not self.backup.isSafe(trajectory[i]):
-                        self.backup.adddFail(k, trajectory[i])
-                        k = self.backup.getBackupPolicy(trajectory[i])
-                        self.env.backup(k)
-
-                        if not backup_triggered:
-                            Logger.warn(f"Backup policy triggered at step {i} with policy {k}")
-                            backup_triggered = True
-
-                if self.c["log_video"] and self.env.render_mode == "rgb_array_list":
-                    renderList.append(self.env.render())
-
-                if self.c["log_video"] and self.env.render_mode == "human":
-                    self.env.render()
-
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-
-            self.env.afterExperiment()
-
-            if self.c["log_video"] and self.env.render_mode == "rgb_array_list":
-                def epsodeTrigger(x): return True
-                try:
-                    save_video(renderList, "./",
-                               fps=self.env.metadata["render_fps"], episode_index=episode, episode_trigger=epsodeTrigger)
-                except Exception as e:
-                    warn(f"couldnt log video: {e}")
-
-        if not backup_triggered and self.backup is not None and not ignore_backup and not self.backup.goState.skipBackupAtRollout() and not torch.any(rewards[1:] < 0):
-            k.to(gosafeopt.device)
-            GoSafeOptState(self.c).goToS1()
-            OptimizerState(self.c).addSafeSet(k.reshape(1, -1))
-            OptimizerState(self.c).changeToLastSafeSet()
-
-        rewards = rewards/(M*N)
-        return rewards, trajectory, backup_triggered, info
-
-    def step(self, k):
-        """
-        returns state x after step
-        """
-        observation, reward, done, truncated, info = self.env.step(k[0:self.c["dim_params"]])
-        if not isinstance(reward, np.ndarray):
-            reward = np.array([reward])
-        return reward, observation, info
-
-    def reset(self):
-        self.env.reset()
         if self.backup is not None:
             self.backup.reset()
 
+        self.env.before_experiment(np_param)
+
+        i = 0
+        while not done:
+            observation, reward, done, truncated, info = self.env.step(np_param[0 : self.c["dim_params"]])
+
+            rewards += reward
+            trajectory.append(observation)
+
+            if not backup_triggered:
+                backup_triggered = self.process_backup_strategy(observation, reward, i)  # type: ignore
+
+            self.process_render()
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            i += 1
+
+        self.env.after_experiment()
+
+        if self.backup is not None:
+            self.backup.after_rollout(np_param, rewards, backup_triggered)
+        self.process_video(episode)
+
+        rewards = rewards / len(trajectory)
+        return torch.from_numpy(rewards), torch.tensor(trajectory), backup_triggered, info
+
+    def reset(self):
+        initial_state, info = self.env.reset()
+        self.render_list = []
+        if self.backup is not None:
+            self.backup.reset()
+        return initial_state, info
+
     def finish(self):
         self.env.close()
+
+    def process_backup_strategy(self, observation: NDArray, reward: NDArray, i: int):
+        if self.backup is not None and not self.backup.is_safe(observation, reward):
+            param = self.backup.get_backup_policy(observation)
+            self.env.backup(param)
+            self.data.append_failed(torch.tensor(param), torch.tensor(observation))
+            Logger.warn(f"Backup policy triggered at step {i} with policy {param}")
+            return True
+
+        return False
+
+    def process_render(self):
+        if self.c["log_video"] and self.env.render_mode == "rgb_array_list":
+            self.render_list.append(self.env.render())
+
+        if self.c["log_video"] and self.env.render_mode == "human":
+            self.env.render()
+
+    def process_video(self, episode: int):
+        if self.c["log_video"] and self.env.render_mode == "rgb_array_list":
+
+            def epsodeTrigger(x):  # noqa: ANN202, ANN001, N802, ARG001
+                return True
+
+            try:
+                save_video(
+                    self.render_list,
+                    "./",
+                    fps=self.env.metadata["render_fps"],
+                    episode_index=episode,
+                    episode_trigger=epsodeTrigger,
+                )
+            except Exception as e:
+                Logger.warn(f"couldnt log video {e}")
