@@ -25,11 +25,7 @@ wandb = "^0.16.1"
 [tool.poetry.group.examples]
 optional = true
 [tool.poetry.group.examples.dependencies]
-seaborn = "^0.13.0"
 gymnasium = {extras = ["classic-control"], version = "^0.29.1"}
-moviepy = "^1.0.3"
-plotly = "^5.18.0"
-ruff-lsp = "^0.0.45"
 pandas = "^2.1.3"
 
 [tool.poetry.group.develop]
