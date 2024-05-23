@@ -12,7 +12,7 @@ license = "GNU GPLv3"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">3.9, < 3.12" #torch not available for 3.12 as of now
+python = ">3.9" #torch not available for 3.12 as of now
 numpy = "^1.26.2"
 torch = "^2.1.1"
 typer = "^0.9.0"
